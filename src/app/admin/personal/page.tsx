@@ -117,8 +117,8 @@ export default function PersonalPage() {
   const [loadingAsgs,   setLoadingAsgs]   = useState(false);
   const [confirmToggle, setConfirmToggle] = useState<Personnel | null>(null);
   const [createdCreds,  setCreatedCreds]  = useState<{ email: string; password: string } | null>(null);
-  const [showPass,      setShowPass]      = useState(false); // ver perfil
-  const [showFormPass,  setShowFormPass]  = useState(false); // formulario editar
+  const [showPass,      setShowPass]      = useState(false);
+  const [showFormPass,  setShowFormPass]  = useState(false);
 
   // ── Firestore ──
   useEffect(() => {
@@ -229,6 +229,7 @@ export default function PersonalPage() {
     setModal("new");
   }
 
+  // ── FIX: handleSave con onAuthStateChanged para evitar auth.currentUser null ──
   async function handleSave() {
     if (!form.fullName.trim())  { setFormError("El nombre completo es obligatorio."); return; }
     if (!form.docNumber.trim()) { setFormError(`El número de ${form.docType} es obligatorio.`); return; }
@@ -242,24 +243,38 @@ export default function PersonalPage() {
 
     try {
       const data: any = {
-        ...form,
-        age: form.birthDate ? calcAge(form.birthDate) : (form.age ? Number(form.age) : null),
-      };
-      delete data.email;
+  ...form,
+  age: form.birthDate ? calcAge(form.birthDate) : (form.age ? Number(form.age) : null),
+};
+delete data.email;
+
+const cleanData = JSON.parse(JSON.stringify(data));
 
       if (modal === "new") {
-        const currentUser = auth.currentUser;
-        if (!currentUser) { setFormError("Sesión expirada. Recarga la página."); setSaving(false); return; }
+        // FIX: esperar a que Firebase resuelva el usuario actual en lugar de usar auth.currentUser
+        const currentUser = await new Promise<import("firebase/auth").User | null>((resolve) => {
+          const unsub = auth.onAuthStateChanged((user) => {
+            unsub();
+            resolve(user);
+          });
+        });
+
+        if (!currentUser) {
+          setFormError("Sesión expirada. Recarga la página.");
+          setSaving(false);
+          return;
+        }
+
         const idToken = await currentUser.getIdToken();
 
         const res = await fetch("/api/create-user", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
           body: JSON.stringify({
-            email: form.email,
-            password: formPassword,
-            personnelData: { ...data, password: formPassword },
-          }),
+  email: form.email?.trim(),
+  password: formPassword,
+  personnelData: cleanData,  
+}),
         });
 
         const json = await res.json();
@@ -269,7 +284,6 @@ export default function PersonalPage() {
         setModal(null);
 
       } else if (selected) {
-        // En edición también guardamos la contraseña actualizada si se cambió
         const updateData: any = { ...data, updatedAt: Timestamp.now() };
         if (formPassword) updateData.password = formPassword;
         await updateDoc(doc(db, "personnel", selected.id), updateData);
@@ -293,25 +307,35 @@ export default function PersonalPage() {
     if (modal === "view") setSelected((prev) => prev ? { ...prev, status: next } : null);
   }
 
+  // ── FIX: exportCSV con String() en todos los valores antes de .replace() ──
   function exportCSV() {
     const rows = [
       ["Nombre","Doc","Número","Teléfono","F. Nacimiento","Edad","Rol","Estado","Planilla","Razón Social","Forma Pago","Fecha inicio","Categoría","Banco","Cuenta","Email"],
       ...filtered.map((p) => [
-        p.fullName, p.docType||"DNI", p.docNumber||(p as any).cedula||"",
-        p.phone, p.birthDate||"", String(p.age||""),
-        ROLE_CONFIG[p.role]?.label||p.role,
-        STATUS_CONFIG[p.status]?.label||p.status,
-        p.enPlanilla?"Sí":"No",
-        p.razonSocial||"", p.formaPago||"",
-        p.startDate||"", p.category||"",
-        p.bank||"", p.bankAccount||"", p.email||"",
+        p.fullName          ?? "",
+        p.docType           ?? "DNI",
+        p.docNumber         ?? (p as any).cedula ?? "",
+        p.phone             ?? "",
+        p.birthDate         ?? "",
+        p.age != null ? String(p.age) : "",
+        ROLE_CONFIG[p.role]?.label    ?? p.role   ?? "",
+        STATUS_CONFIG[p.status]?.label ?? p.status ?? "",
+        p.enPlanilla ? "Sí" : "No",
+        p.razonSocial  ?? "",
+        p.formaPago    ?? "",
+        p.startDate    ?? "",
+        p.category     ?? "",
+        p.bank         ?? "",
+        p.bankAccount  ?? "",
+        p.email        ?? "",
       ]),
     ];
-    const csv  = rows.map((r) => r.map((c) => `"${(c||"").replace(/"/g,'""')}"`).join(",")).join("\n");
-    const blob = new Blob(["\uFEFF"+csv], { type: "text/csv;charset=utf-8;" });
+    // Convertir TODOS los valores a string antes de .replace()
+    const csv  = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
-    a.href = url; a.download = `personal_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    a.href = url; a.download = `personal_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
     URL.revokeObjectURL(url);
   }
 
@@ -461,7 +485,6 @@ export default function PersonalPage() {
               </div>
 
               <div className="view-sections">
-                {/* Datos personales */}
                 <div className="view-section">
                   <p className="section-title">👤 Datos personales</p>
                   <div className="data-grid">
@@ -472,7 +495,6 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
-                {/* Datos laborales */}
                 <div className="view-section">
                   <p className="section-title">💼 Datos laborales</p>
                   <div className="data-grid">
@@ -485,7 +507,6 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
-                {/* Datos bancarios */}
                 <div className="view-section">
                   <p className="section-title">🏦 Datos bancarios</p>
                   <div className="data-grid">
@@ -494,7 +515,6 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
-                {/* Acceso al sistema */}
                 <div className="view-section">
                   <p className="section-title">🔐 Acceso al sistema</p>
                   <div className="data-grid">
@@ -504,10 +524,7 @@ export default function PersonalPage() {
                       <span className="data-lbl">Contraseña</span>
                       <div className="pass-view-row">
                         <span className="data-val pass-value">
-                          {selected.password
-                            ? (showPass ? selected.password : "••••••••")
-                            : "—"
-                          }
+                          {selected.password ? (showPass ? selected.password : "••••••••") : "—"}
                         </span>
                         {selected.password && (
                           <button className="btn-show-pass" onClick={() => setShowPass(v => !v)}>
@@ -519,7 +536,6 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
-                {/* Últimos turnos */}
                 <div className="view-section">
                   <p className="section-title">📅 Últimos turnos</p>
                   {loadingAsgs
@@ -561,7 +577,6 @@ export default function PersonalPage() {
               </div>
 
               <div className="form-body">
-                {/* Datos personales */}
                 <p className="form-section-title">👤 Datos personales</p>
                 <div className="form-grid">
                   <div className="form-field form-field-full">
@@ -606,7 +621,6 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
-                {/* Datos laborales */}
                 <p className="form-section-title">💼 Datos laborales</p>
                 <div className="form-grid">
                   <div className="form-field">
@@ -684,7 +698,6 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
-                {/* Datos bancarios */}
                 <p className="form-section-title">🏦 Datos bancarios</p>
                 <div className="form-grid">
                   <div className="form-field">
@@ -700,7 +713,6 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
-                {/* Acceso al sistema */}
                 <p className="form-section-title">🔐 Acceso al sistema</p>
                 {modal==="new" && (
                   <div className="auth-notice">Al guardar se creará automáticamente el usuario en Firebase Auth.</div>
@@ -890,12 +902,10 @@ const CSS = `
 .data-item-full{grid-column:1/-1}
 .data-lbl{font-size:8px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
 .data-val{font-size:12px;color:var(--white)}
-/* Fila de contraseña en ver perfil */
 .pass-view-row{display:flex;align-items:center;gap:10px}
 .pass-value{font-family:monospace;font-size:13px;letter-spacing:1px}
 .btn-show-pass{padding:3px 10px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:var(--gold);font-family:'Montserrat',sans-serif;font-size:9px;font-weight:600;cursor:pointer;transition:background .15s;white-space:nowrap}
 .btn-show-pass:hover{background:rgba(201,168,76,.16)}
-/* Input contraseña en formulario */
 .pass-input-wrap{position:relative;display:flex}
 .pass-input-wrap input{flex:1;padding-right:44px}
 .btn-toggle-pass{position:absolute;right:0;top:0;bottom:0;width:40px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-left:none;color:var(--dim);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:color .15s}

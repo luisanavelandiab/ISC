@@ -1,13 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // src/app/api/create-user/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST(req: NextRequest) {
   try {
-    // Import dinámico para evitar problemas de inicialización en dev
     const { adminAuth, adminDb } = await import("@/lib/firebaseAdmin");
 
     // ── 1. Verificar token del admin ──────────────────────────────────────
@@ -76,7 +74,9 @@ export async function POST(req: NextRequest) {
       role: personnelData.authRole || "vigilante",
     });
 
-    // ── 4. Crear doc en personnel ─────────────────────────────────────────
+    
+
+    // ── 5. Crear doc en personnel ─────────────────────────────────────────
     const personnelRef = await adminDb.collection("personnel").add({
       ...personnelData,
       uid,
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     // Guardar el propio ID en el doc
     await personnelRef.update({ guardId: personnelId });
 
-    // ── 5. Crear doc en users/{uid} ───────────────────────────────────────
+    // ── 6. Crear doc en users/{uid} ───────────────────────────────────────
     await adminDb.collection("users").doc(uid).set({
       email,
       displayName:  personnelData.fullName || "",
@@ -100,11 +100,16 @@ export async function POST(req: NextRequest) {
       createdAt:    FieldValue.serverTimestamp(),
     });
 
-    // ── 6. Éxito ──────────────────────────────────────────────────────────
+    // ── 7. Éxito ──────────────────────────────────────────────────────────
     return NextResponse.json({ success: true, uid, personnelId });
 
   } catch (error: any) {
-    console.error("[create-user] Error:", error?.code, error?.message);
+    // Log detallado para debugging
+    console.error("[create-user] Error COMPLETO:", JSON.stringify({
+      code:    error?.code,
+      message: error?.message,
+      details: error?.errorInfo,
+    }, null, 2));
 
     const firebaseErrors: Record<string, string> = {
       "auth/email-already-exists": "Este correo ya está registrado en Firebase.",

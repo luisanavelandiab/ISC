@@ -7,200 +7,165 @@ import {
   collection, onSnapshot, query, where, orderBy, doc, getDoc,
 } from "firebase/firestore";
 import { auth, db } from "@/services/firebase";
-import { signOut } from "firebase/auth";
+import { signOut, onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-// ─────────────────────────────────────────────
-// TIPOS
-// ─────────────────────────────────────────────
 interface Unit {
-  id: string;
-  name: string;
-  shiftType: string;
+  id: string; name: string; shiftType: string;
   requiredPositions: { shiftType: string; quantity: number }[];
 }
-interface Guard {
-  id: string;
-  name: string;
-  available: boolean;
-  state?: string;
-}
+interface Guard { id: string; name: string; available: boolean; state?: string; }
 interface Assignment {
-  id: string;
-  unitId: string;
-  unitName: string;
-  guardId: string;
-  guardName: string;
-  date: Date;
-  shift: "dia" | "noche" | "descanso";
-  status: "borrador" | "publicado";
+  id: string; unitId: string; unitName: string; guardId: string; guardName: string;
+  date: Date; shift: "dia" | "noche" | "descanso"; status: "borrador" | "publicado";
 }
 interface AlertDoc {
-  id: string;
-  type: string;
-  severity: "critica" | "advertencia" | "info";
-  unitName?: string;
-  guardName?: string;
-  message: string;
-  createdAt: Date;
+  id: string; type: string; severity: "critica" | "advertencia" | "info";
+  unitName?: string; guardName?: string; message: string; createdAt: Date;
 }
 
-
-// ─────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────
 function getMonday(d: Date) {
-  const r = new Date(d);
-  const day = r.getDay();
-  r.setDate(r.getDate() - day + (day === 0 ? -6 : 1));
-  r.setHours(0, 0, 0, 0);
-  return r;
+  const r = new Date(d); const day = r.getDay();
+  r.setDate(r.getDate() - day + (day === 0 ? -6 : 1)); r.setHours(0,0,0,0); return r;
 }
 function getWeekDays(offset: number): Date[] {
-  const base = getMonday(new Date());
-  base.setDate(base.getDate() + offset * 7);
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i);
-    return d;
-  });
+  const base = getMonday(new Date()); base.setDate(base.getDate() + offset * 7);
+  return Array.from({ length: 7 }, (_, i) => { const d = new Date(base); d.setDate(base.getDate() + i); return d; });
 }
 function fmtRange(days: Date[]) {
-  return (
-    days[0].toLocaleDateString("es-ES", { day: "2-digit", month: "short" }) +
-    " — " +
-    days[6].toLocaleDateString("es-ES", { day: "2-digit", month: "short" })
-  );
+  return days[0].toLocaleDateString("es-ES",{day:"2-digit",month:"short"}) + " — " + days[6].toLocaleDateString("es-ES",{day:"2-digit",month:"short"});
 }
-function dateKey(d: Date) { return d.toISOString().slice(0, 10); }
+function dateKey(d: Date) { return d.toISOString().slice(0,10); }
 
-const SEV_COLOR: Record<string, string> = {
-  critica: "#E57373", advertencia: "#C9A84C", info: "#4DA3FF",
-};
-const SEV_ICON: Record<string, string> = {
-  critica: "🔴", advertencia: "🟡", info: "🔵",
-};
+const SEV_COLOR: Record<string,string> = { critica:"#E57373", advertencia:"#C9A84C", info:"#4DA3FF" };
+const SEV_ICON:  Record<string,string> = { critica:"🔴", advertencia:"🟡", info:"🔵" };
 
-// ─────────────────────────────────────────────
-// COMPONENTE
-// ─────────────────────────────────────────────
 export default function CoordinadorPage() {
   const router = useRouter();
+  const [authorized,  setAuthorized]  = useState(false);
   const [units,       setUnits]       = useState<Unit[]>([]);
   const [guards,      setGuards]      = useState<Guard[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [alerts,      setAlerts]      = useState<AlertDoc[]>([]);
   const [weekOffset,  setWeekOffset]  = useState(0);
   const [filterUnit,  setFilterUnit]  = useState("all");
-  const [view,        setView]        = useState<"calendar" | "chart">("calendar");
+  const [view,        setView]        = useState<"calendar"|"chart">("calendar");
   const [userName,    setUserName]    = useState("Coordinador");
   const [ddOpen,      setDdOpen]      = useState(false);
 
-  // ── Cargar nombre del usuario ──
+  // ── Verificación de rol con onAuthStateChanged ──
   useEffect(() => {
-    const u = auth.currentUser;
-    if (!u) { router.push("/"); return; }
-    getDoc(doc(db, "users", u.uid)).then((d) => {
-      if (d.exists()) setUserName(d.data().displayName || u.email || "Coordinador");
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) { router.replace("/login"); return; }
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        if (!snap.exists()) { await signOut(auth); router.replace("/login"); return; }
+        const data = snap.data();
+        const role = (data.role || data.authRole || "").toLowerCase();
+        const name = data.displayName || user.email || "Coordinador";
+        if (role === "coordinador") { setUserName(name); setAuthorized(true); }
+        else if (role === "admin")     router.replace("/admin");
+        else if (role === "vigilante") router.replace("/vigilante");
+        else                           router.replace("/login");
+      } catch (err) {
+        console.error("Error verificando rol:", err);
+        router.replace("/login");
+      }
     });
+    return () => unsub();
   }, []);
 
-  // ── Firestore ──
+  // ── Firestore — solo si está autorizado ──
   useEffect(() => {
-    const u1 = onSnapshot(collection(db, "units"), (s) =>
-      setUnits(s.docs.map((d) => ({ id: d.id, ...d.data() } as Unit)))
-    );
-    const u2 = onSnapshot(collection(db, "personnel"), (s) =>
-      setGuards(s.docs.map((d) => ({ id: d.id, ...d.data() } as Guard)))
-    );
+    if (!authorized) return;
+    const u1 = onSnapshot(collection(db,"units"),(s) => setUnits(s.docs.map((d) => ({id:d.id,...d.data()} as Unit))));
+    const u2 = onSnapshot(collection(db,"personnel"),(s) => setGuards(s.docs.map((d) => ({id:d.id,...d.data()} as Guard))));
     const u3 = onSnapshot(
-      query(collection(db, "assignments"), where("status", "in", ["borrador", "publicado"])),
-      (s) => {
-        setAssignments(s.docs.map((d) => {
-          const r = d.data();
-          return { id: d.id, ...r, date: r.date?.toDate?.() || new Date() } as Assignment;
-        }));
-      }
+      query(collection(db,"assignments"), where("status","in",["borrador","publicado"])),
+      (s) => setAssignments(s.docs.map((d) => { const r=d.data(); return {id:d.id,...r,date:r.date?.toDate?.()||new Date()} as Assignment; }))
     );
     const u4 = onSnapshot(
-      query(collection(db, "alerts"), where("resolved", "==", false), orderBy("createdAt", "desc")),
-      (s) => {
-        setAlerts(s.docs.map((d) => {
-          const r = d.data();
-          return { id: d.id, ...r, createdAt: r.createdAt?.toDate?.() || new Date() } as AlertDoc;
-        }));
-      }
+      query(collection(db,"alerts"), where("resolved","==",false), orderBy("createdAt","desc")),
+      (s) => setAlerts(s.docs.map((d) => { const r=d.data(); return {id:d.id,...r,createdAt:r.createdAt?.toDate?.()||new Date()} as AlertDoc; }))
     );
     return () => { u1(); u2(); u3(); u4(); };
-  }, []);
+  }, [authorized]);
 
-  const weekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
-
-  const weekAssignments = useMemo(() =>
-    assignments.filter((a) => weekDays.some((d) => dateKey(d) === dateKey(a.date))),
-    [assignments, weekDays]
-  );
-
-  const coverageMap = useMemo(() => {
-    const map: Record<string, { required: number; assigned: number }> = {};
-    units.forEach((u) => {
-      const req = u.requiredPositions?.reduce((s, p) => s + p.quantity, 0) || 0;
-      const asgn = weekAssignments.filter(
-        (a) => a.unitId === u.id && a.shift !== "descanso"
-      ).length;
-      map[u.id] = { required: req * 7, assigned: asgn };
-    });
-    return map;
-  }, [units, weekAssignments]);
-
-  const totalRequired = Object.values(coverageMap).reduce((s, v) => s + v.required, 0);
-  const totalAssigned = Object.values(coverageMap).reduce((s, v) => s + v.assigned, 0);
-  const coveragePct = totalRequired > 0 ? Math.round(totalAssigned / totalRequired * 100) : 0;
-
-  const chartData = units.map((u) => ({
-    name: u.name.length > 9 ? u.name.slice(0, 9) + "…" : u.name,
-    Requerido: coverageMap[u.id]?.required || 0,
-    Asignado:  coverageMap[u.id]?.assigned  || 0,
-  }));
-
-  const visibleUnits = filterUnit === "all" ? units : units.filter((u) => u.id === filterUnit);
-  const selLabel = filterUnit === "all" ? "Todas" : (units.find((u) => u.id === filterUnit)?.name ?? "Todas");
-
-  const criticalAlerts = alerts.filter((a) => a.severity === "critica");
-
+  // ── Logout con limpieza de cookie ──
   async function handleLogout() {
+    document.cookie = "isc-role=; path=/; max-age=0";
     await signOut(auth);
-    router.push("/");
+    router.push("/login");
   }
 
-  // ─────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────
+  const weekDays        = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
+  const weekAssignments = useMemo(() => assignments.filter((a) => weekDays.some((d) => dateKey(d)===dateKey(a.date))), [assignments,weekDays]);
+
+  const coverageMap = useMemo(() => {
+    const map: Record<string,{required:number;assigned:number}> = {};
+    units.forEach((u) => {
+      const req  = u.requiredPositions?.reduce((s,p) => s+p.quantity,0)||0;
+      const asgn = weekAssignments.filter((a) => a.unitId===u.id && a.shift!=="descanso").length;
+      map[u.id] = { required:req*7, assigned:asgn };
+    });
+    return map;
+  }, [units,weekAssignments]);
+
+  const totalRequired = Object.values(coverageMap).reduce((s,v) => s+v.required,0);
+  const totalAssigned = Object.values(coverageMap).reduce((s,v) => s+v.assigned,0);
+  const coveragePct   = totalRequired>0 ? Math.round(totalAssigned/totalRequired*100) : 0;
+  const chartData     = units.map((u) => ({ name:u.name.length>9?u.name.slice(0,9)+"…":u.name, Requerido:coverageMap[u.id]?.required||0, Asignado:coverageMap[u.id]?.assigned||0 }));
+  const visibleUnits  = filterUnit==="all" ? units : units.filter((u) => u.id===filterUnit);
+  const selLabel      = filterUnit==="all" ? "Todas" : (units.find((u) => u.id===filterUnit)?.name??"Todas");
+  const criticalAlerts = alerts.filter((a) => a.severity==="critica");
+
+  // ── Pantalla de carga ──
+  if (!authorized) {
+    return (
+      <>
+        <style>{`
+          *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+          body{background:#0A0A0A}
+          .auth-screen{min-height:100vh;background:#0A0A0A;display:flex;align-items:center;justify-content:center;font-family:'Montserrat',sans-serif;position:relative;overflow:hidden;}
+          .auth-screen::before{content:'';position:fixed;inset:0;background-image:linear-gradient(45deg,rgba(201,168,76,.03) 1px,transparent 1px),linear-gradient(-45deg,rgba(201,168,76,.03) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;}
+          .auth-inner{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:16px;}
+          .auth-spinner{width:36px;height:36px;border:2px solid rgba(201,168,76,.15);border-top-color:#C9A84C;border-radius:50%;animation:spin .8s linear infinite;}
+          @keyframes spin{to{transform:rotate(360deg)}}
+          .auth-label{font-size:9px;font-weight:600;letter-spacing:4px;text-transform:uppercase;color:rgba(201,168,76,.6);}
+          .auth-brand{font-family:'Cormorant Garamond',serif;font-size:13px;font-weight:300;color:rgba(245,240,232,.2);letter-spacing:2px;margin-bottom:8px;}
+        `}</style>
+        <div className="auth-screen">
+          <div className="auth-inner">
+            <p className="auth-brand">ISC Control</p>
+            <div className="auth-spinner" />
+            <p className="auth-label">Verificando acceso...</p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <style>{CSS}</style>
       <div className="cp">
 
-        {/* ── Header ── */}
         <div className="cp-header">
           <div>
             <p className="cp-eye">Vista coordinador</p>
             <h1 className="cp-title">Centro de Control <span>Operativo</span></h1>
           </div>
           <div className="cp-header-right">
-            {/* Nav */}
             <nav className="cp-nav">
-              <Link href="/admin/alertas"   className="cp-nav-btn">
-                🔔
-                <span className="nav-lbl">Alertas</span>
-                {alerts.length > 0 && <span className="nav-badge">{alerts.length}</span>}
+              <Link href="/admin/alertas" className="cp-nav-btn">
+                🔔 <span className="nav-lbl">Alertas</span>
+                {alerts.length>0 && <span className="nav-badge">{alerts.length}</span>}
               </Link>
               <Link href="/admin/historial" className="cp-nav-btn">📋 <span className="nav-lbl">Historial</span></Link>
               <Link href="/admin/personal"  className="cp-nav-btn">👥 <span className="nav-lbl">Personal</span></Link>
             </nav>
-            {/* User */}
             <div className="cp-user">
               <span className="cp-user-name">{userName}</span>
               <span className="cp-user-role">Coordinador</span>
@@ -209,133 +174,104 @@ export default function CoordinadorPage() {
           </div>
         </div>
 
-        {/* ── Banner solo lectura ── */}
         <div className="readonly-banner">
           <span className="readonly-icon">👁</span>
           <span>Modo coordinador — el calendario es de solo lectura. Las asignaciones las gestiona el administrador.</span>
         </div>
 
-        {/* ── Alerta crítica destacada ── */}
-        {criticalAlerts.length > 0 && (
+        {criticalAlerts.length>0 && (
           <div className="critical-strip">
             <span className="critical-icon">🔴</span>
             <span className="critical-text">
-              {criticalAlerts.length} alerta{criticalAlerts.length !== 1 ? "s" : ""} crítica{criticalAlerts.length !== 1 ? "s" : ""} activa{criticalAlerts.length !== 1 ? "s" : ""}:
+              {criticalAlerts.length} alerta{criticalAlerts.length!==1?"s":""} crítica{criticalAlerts.length!==1?"s":""} activa{criticalAlerts.length!==1?"s":""}:
               {" "}{criticalAlerts[0].message}
             </span>
             <Link href="/alertas" className="critical-link">Ver alertas →</Link>
           </div>
         )}
 
-        {/* ── KPIs ── */}
         <div className="kpi-row">
-          <div className="kpi">
-            <div className="kpi-lbl">Unidades</div>
-            <div className="kpi-val">{units.length}</div>
-          </div>
-          <div className="kpi">
-            <div className="kpi-lbl">Vigilantes</div>
-            <div className="kpi-val">{guards.filter((g) => g.available || g.state === "Activo").length}</div>
-          </div>
+          <div className="kpi"><div className="kpi-lbl">Unidades</div><div className="kpi-val">{units.length}</div></div>
+          <div className="kpi"><div className="kpi-lbl">Vigilantes</div><div className="kpi-val">{guards.filter((g) => g.available||g.state==="Activo").length}</div></div>
           <div className="kpi">
             <div className="kpi-lbl">Cobertura</div>
-            <div className="kpi-val" style={{ color: coveragePct >= 90 ? "#81C784" : coveragePct >= 60 ? "var(--gold)" : "#E57373" }}>
-              {coveragePct}%
-            </div>
+            <div className="kpi-val" style={{color:coveragePct>=90?"#81C784":coveragePct>=60?"var(--gold)":"#E57373"}}>{coveragePct}%</div>
           </div>
           <div className="kpi">
             <div className="kpi-lbl">Alertas</div>
-            <div className="kpi-val" style={{ color: alerts.length > 0 ? "#E57373" : "#81C784" }}>
-              {alerts.length}
-            </div>
+            <div className="kpi-val" style={{color:alerts.length>0?"#E57373":"#81C784"}}>{alerts.length}</div>
           </div>
         </div>
 
-        {/* ── Tabs ── */}
         <div className="tab-row">
-          <button className={"tab-btn" + (view === "calendar" ? " active" : "")} onClick={() => setView("calendar")}>📅 Calendario</button>
-          <button className={"tab-btn" + (view === "chart"    ? " active" : "")} onClick={() => setView("chart")}>📊 Cobertura</button>
+          <button className={"tab-btn"+(view==="calendar"?" active":"")} onClick={() => setView("calendar")}>📅 Calendario</button>
+          <button className={"tab-btn"+(view==="chart"?" active":"")}    onClick={() => setView("chart")}>📊 Cobertura</button>
         </div>
 
-        {/* ── Cobertura ── */}
-        {view === "chart" && (
+        {view==="chart" && (
           <div className="chart-panel">
             <p className="sec-lbl">Cobertura semanal por unidad</p>
             <div className="chart-card">
-              <div style={{ width: "100%", height: 220, minWidth: 0 }}>
+              <div style={{width:"100%",height:220,minWidth:0}}>
                 <ResponsiveContainer>
                   <BarChart data={chartData} barCategoryGap="35%">
-                    <XAxis dataKey="name" tick={{ fill: "rgba(245,240,232,.45)", fontSize: 9, fontFamily: "Montserrat" }} axisLine={{ stroke: "rgba(201,168,76,.15)" }} tickLine={false} />
-                    <YAxis tick={{ fill: "rgba(245,240,232,.45)", fontSize: 9, fontFamily: "Montserrat" }} axisLine={false} tickLine={false} width={22} />
-                    <Tooltip contentStyle={{ background: "#141414", border: "1px solid rgba(201,168,76,.25)", fontFamily: "Montserrat", fontSize: 11, color: "#F5F0E8" }} cursor={{ fill: "rgba(201,168,76,.04)" }} />
-                    <Bar dataKey="Requerido" fill="#E57373" radius={0} />
-                    <Bar dataKey="Asignado"  fill="#C9A84C" radius={0} />
+                    <XAxis dataKey="name" tick={{fill:"rgba(245,240,232,.45)",fontSize:9,fontFamily:"Montserrat"}} axisLine={{stroke:"rgba(201,168,76,.15)"}} tickLine={false}/>
+                    <YAxis tick={{fill:"rgba(245,240,232,.45)",fontSize:9,fontFamily:"Montserrat"}} axisLine={false} tickLine={false} width={22}/>
+                    <Tooltip contentStyle={{background:"#141414",border:"1px solid rgba(201,168,76,.25)",fontFamily:"Montserrat",fontSize:11,color:"#F5F0E8"}} cursor={{fill:"rgba(201,168,76,.04)"}}/>
+                    <Bar dataKey="Requerido" fill="#E57373" radius={0}/>
+                    <Bar dataKey="Asignado"  fill="#C9A84C" radius={0}/>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
-
-            {/* Alertas panel */}
-            <p className="sec-lbl" style={{ marginTop: 20 }}>Alertas activas recientes</p>
-            {alerts.length === 0 ? (
-              <div className="empty-alerts">✓ Sin alertas activas</div>
-            ) : (
-              <div className="alerts-mini">
-                {alerts.slice(0, 5).map((a) => (
-                  <div key={a.id} className="alert-mini-row" style={{ borderLeftColor: SEV_COLOR[a.severity] }}>
-                    <span>{SEV_ICON[a.severity]}</span>
-                    <span className="alert-mini-msg">{a.message}</span>
-                    {a.unitName && <span className="alert-mini-unit">📍 {a.unitName}</span>}
-                  </div>
-                ))}
-                {alerts.length > 5 && (
-                  <Link href="/alertas" className="alerts-more">Ver todas ({alerts.length}) →</Link>
-                )}
-              </div>
-            )}
+            <p className="sec-lbl" style={{marginTop:20}}>Alertas activas recientes</p>
+            {alerts.length===0
+              ? <div className="empty-alerts">✓ Sin alertas activas</div>
+              : <div className="alerts-mini">
+                  {alerts.slice(0,5).map((a) => (
+                    <div key={a.id} className="alert-mini-row" style={{borderLeftColor:SEV_COLOR[a.severity]}}>
+                      <span>{SEV_ICON[a.severity]}</span>
+                      <span className="alert-mini-msg">{a.message}</span>
+                      {a.unitName && <span className="alert-mini-unit">📍 {a.unitName}</span>}
+                    </div>
+                  ))}
+                  {alerts.length>5 && <Link href="/alertas" className="alerts-more">Ver todas ({alerts.length}) →</Link>}
+                </div>
+            }
           </div>
         )}
 
-        {/* ── Calendario (solo lectura) ── */}
-        {view === "calendar" && (
+        {view==="calendar" && (
           <div className="calendar-panel">
-            {/* Controles */}
             <div className="week-bar">
-              <button className="nav-btn" onClick={() => setWeekOffset((w) => w - 1)}>◀</button>
+              <button className="nav-btn" onClick={() => setWeekOffset((w) => w-1)}>◀</button>
               <span className="week-range">📅 {fmtRange(weekDays)}</span>
-              <button className="nav-btn" onClick={() => setWeekOffset((w) => w + 1)}>▶</button>
-
-              {/* Dropdown unidad */}
+              <button className="nav-btn" onClick={() => setWeekOffset((w) => w+1)}>▶</button>
               <div className="dd-wrap">
                 <button className="dd-btn" onClick={() => setDdOpen((o) => !o)}>
                   <span className="dd-txt">{selLabel}</span>
-                  <span className={"dd-arrow" + (ddOpen ? " open" : "")}>▼</span>
+                  <span className={"dd-arrow"+(ddOpen?" open":"")}>▼</span>
                 </button>
                 {ddOpen && (
                   <div className="dd-menu">
-                    <div className={"dd-item" + (filterUnit === "all" ? " sel" : "")} onClick={() => { setFilterUnit("all"); setDdOpen(false); }}>Todas</div>
+                    <div className={"dd-item"+(filterUnit==="all"?" sel":"")} onClick={() => {setFilterUnit("all");setDdOpen(false);}}>Todas</div>
                     {units.map((u) => (
-                      <div key={u.id} className={"dd-item" + (filterUnit === u.id ? " sel" : "")} onClick={() => { setFilterUnit(u.id); setDdOpen(false); }}>
-                        {u.name}
-                      </div>
+                      <div key={u.id} className={"dd-item"+(filterUnit===u.id?" sel":"")} onClick={() => {setFilterUnit(u.id);setDdOpen(false);}}>{u.name}</div>
                     ))}
                   </div>
                 )}
               </div>
-
-              {/* Leyenda readonly */}
               <span className="readonly-tag">👁 Solo lectura</span>
             </div>
 
             <p className="tbl-hint">← desliza para ver la semana →</p>
 
-            {/* Tabla */}
             <div className="tbl-scroll">
-              <div className="mgrid" style={{ gridTemplateColumns: `150px repeat(7, minmax(100px,1fr))` }}>
+              <div className="mgrid" style={{gridTemplateColumns:`150px repeat(7, minmax(100px,1fr))`}}>
                 <div className="mhdr">Unidad</div>
                 {weekDays.map((d) => (
                   <div key={d.toISOString()} className="mhdr">
-                    {d.toLocaleDateString("es-ES", { weekday: "short", day: "2-digit" })}
+                    {d.toLocaleDateString("es-ES",{weekday:"short",day:"2-digit"})}
                   </div>
                 ))}
                 {visibleUnits.map((unit) => (
@@ -345,41 +281,33 @@ export default function CoordinadorPage() {
                       <span className="munit-sub">Tipo {unit.shiftType}</span>
                     </div>
                     {weekDays.map((day) => {
-                      const cellAsgs = weekAssignments.filter(
-                        (a) => a.unitId === unit.id && dateKey(a.date) === dateKey(day)
-                      );
-                      const dayAsgs   = cellAsgs.filter((a) => a.shift === "dia");
-                      const nightAsgs = cellAsgs.filter((a) => a.shift === "noche");
-                      const cellAlerts = alerts.filter(
-                        (al) => al.unitName === unit.name
-                      );
+                      const cellAsgs   = weekAssignments.filter((a) => a.unitId===unit.id && dateKey(a.date)===dateKey(day));
+                      const dayAsgs    = cellAsgs.filter((a) => a.shift==="dia");
+                      const nightAsgs  = cellAsgs.filter((a) => a.shift==="noche");
+                      const cellAlerts = alerts.filter((al) => al.unitName===unit.name);
                       return (
-                        <div key={dateKey(day)} className={"mcell" + (cellAlerts.length > 0 ? " mcell-alert" : "")}>
-                          {cellAlerts.length > 0 && <div className="cell-alert-dot" title={cellAlerts[0].message}>⚠</div>}
-
-                          {/* Día */}
+                        <div key={dateKey(day)} className={"mcell"+(cellAlerts.length>0?" mcell-alert":"")}>
+                          {cellAlerts.length>0 && <div className="cell-alert-dot" title={cellAlerts[0].message}>⚠</div>}
                           <div className="shift-row">
                             <span className="shift-label shift-label-day">☀️ Día</span>
-                            {dayAsgs.length === 0
+                            {dayAsgs.length===0
                               ? <span className="shift-empty">Sin cubrir</span>
                               : dayAsgs.map((a) => (
                                 <div key={a.id} className="pill pill-day">
                                   <span>{a.guardName}</span>
-                                  {a.status === "borrador" && <span className="pill-draft" title="Borrador">●</span>}
+                                  {a.status==="borrador" && <span className="pill-draft" title="Borrador">●</span>}
                                 </div>
                               ))
                             }
                           </div>
-
-                          {/* Noche */}
                           <div className="shift-row shift-row-night">
                             <span className="shift-label shift-label-night">🌙 Noche</span>
-                            {nightAsgs.length === 0
+                            {nightAsgs.length===0
                               ? <span className="shift-empty">Sin cubrir</span>
                               : nightAsgs.map((a) => (
                                 <div key={a.id} className="pill pill-night">
                                   <span>{a.guardName}</span>
-                                  {a.status === "borrador" && <span className="pill-draft" title="Borrador">●</span>}
+                                  {a.status==="borrador" && <span className="pill-draft" title="Borrador">●</span>}
                                 </div>
                               ))
                             }
@@ -392,11 +320,10 @@ export default function CoordinadorPage() {
               </div>
             </div>
 
-            {/* Leyenda */}
             <div className="legend">
-              <span className="legend-item"><span className="legend-dot" style={{ background: "var(--gold)" }} /> Publicado</span>
-              <span className="legend-item"><span className="legend-dot draft-dot" /> Borrador (pendiente)</span>
-              <span className="legend-item"><span className="legend-dot" style={{ background: "#E57373" }} /> Sin cubrir</span>
+              <span className="legend-item"><span className="legend-dot" style={{background:"var(--gold)"}}/> Publicado</span>
+              <span className="legend-item"><span className="legend-dot draft-dot"/> Borrador (pendiente)</span>
+              <span className="legend-item"><span className="legend-dot" style={{background:"#E57373"}}/> Sin cubrir</span>
             </div>
           </div>
         )}
@@ -408,18 +335,10 @@ export default function CoordinadorPage() {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Montserrat:wght@300;400;500;600&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --gold:#C9A84C;--gold-light:#E8C97A;
-  --black:#0A0A0A;--card:#141414;--card2:#1c1c1c;
-  --white:#F5F0E8;--dim:rgba(245,240,232,.5);
-  --border:rgba(201,168,76,.18);
-  --red:#E57373;--blue:#4DA3FF;--green:#81C784;
-}
+:root{--gold:#C9A84C;--gold-light:#E8C97A;--black:#0A0A0A;--card:#141414;--card2:#1c1c1c;--white:#F5F0E8;--dim:rgba(245,240,232,.5);--border:rgba(201,168,76,.18);--red:#E57373;--blue:#4DA3FF;--green:#81C784;}
 .cp{background:var(--black);min-height:100vh;font-family:'Montserrat',sans-serif;color:var(--white);padding:20px 16px 60px}
 .cp::before{content:'';position:fixed;inset:0;background-image:linear-gradient(45deg,rgba(201,168,76,.03) 1px,transparent 1px),linear-gradient(-45deg,rgba(201,168,76,.03) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0}
 .cp>*{position:relative;z-index:1}
-
-/* Header */
 .cp-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
 .cp-eye{font-size:9px;font-weight:600;letter-spacing:4px;text-transform:uppercase;color:var(--gold);margin-bottom:4px}
 .cp-title{font-family:'Cormorant Garamond',serif;font-size:clamp(22px,6vw,36px);font-weight:300;line-height:1.1}
@@ -435,8 +354,6 @@ const CSS = `
 .cp-user-role{font-size:8px;color:var(--gold);letter-spacing:1px;text-transform:uppercase}
 .btn-logout{padding:7px 10px;background:transparent;border:1px solid rgba(229,115,115,.25);color:var(--red);font-size:13px;cursor:pointer;transition:background .2s}
 .btn-logout:hover{background:rgba(229,115,115,.08)}
-
-/* Banners */
 .readonly-banner{display:flex;align-items:center;gap:8px;padding:9px 14px;background:rgba(77,163,255,.06);border:1px solid rgba(77,163,255,.2);color:rgba(77,163,255,.9);font-size:10px;margin-bottom:14px}
 .readonly-icon{font-size:13px;flex-shrink:0}
 .readonly-tag{font-size:8px;font-weight:600;letter-spacing:1px;color:rgba(77,163,255,.7);background:rgba(77,163,255,.08);border:1px solid rgba(77,163,255,.2);padding:3px 8px;white-space:nowrap}
@@ -445,19 +362,13 @@ const CSS = `
 .critical-text{font-size:10px;color:rgba(229,115,115,.9);flex:1}
 .critical-link{font-size:9px;font-weight:700;color:var(--red);text-decoration:none;letter-spacing:.5px;white-space:nowrap}
 .critical-link:hover{text-decoration:underline}
-
-/* KPIs */
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:20px}
 .kpi{background:var(--card);border:1px solid var(--border);padding:clamp(8px,2vw,18px) clamp(6px,2vw,14px);clip-path:polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%)}
 .kpi-lbl{font-size:clamp(6px,1.5vw,9px);font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--gold);margin-bottom:4px}
 .kpi-val{font-family:'Cormorant Garamond',serif;font-size:clamp(22px,5vw,40px);font-weight:300;line-height:1}
-
-/* Tabs */
 .tab-row{display:flex;gap:2px;margin-bottom:20px;border-bottom:1px solid var(--border)}
 .tab-btn{flex:1;padding:10px 4px;background:none;border:none;color:var(--dim);font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .2s}
 .tab-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
-
-/* Chart */
 .chart-panel{display:flex;flex-direction:column;gap:0}
 .sec-lbl{font-size:9px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--gold);margin-bottom:12px}
 .chart-card{background:var(--card);border:1px solid var(--border);padding:16px 10px 8px;margin-bottom:0}
@@ -468,8 +379,6 @@ const CSS = `
 .alert-mini-unit{color:var(--dim);font-size:9px;white-space:nowrap}
 .alerts-more{font-size:10px;color:var(--gold);text-decoration:none;padding:10px 12px;display:block;text-align:center;border:1px dashed rgba(201,168,76,.2);margin-top:4px;transition:background .15s}
 .alerts-more:hover{background:rgba(201,168,76,.05)}
-
-/* Week bar */
 .week-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .week-range{font-size:10px;color:var(--dim);letter-spacing:.5px;flex:1}
 .nav-btn{width:32px;height:32px;flex-shrink:0;background:var(--card);border:1px solid var(--border);color:var(--gold);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:background .2s}
@@ -484,8 +393,6 @@ const CSS = `
 .dd-item{padding:9px 13px;cursor:pointer;font-size:11px;color:var(--dim);border-bottom:1px solid rgba(201,168,76,.05);transition:background .15s,color .15s}
 .dd-item:hover{background:rgba(201,168,76,.08);color:var(--white)}
 .dd-item.sel{color:var(--gold);background:rgba(201,168,76,.06);box-shadow:inset 2px 0 0 var(--gold)}
-
-/* Tabla */
 .tbl-hint{font-size:9px;letter-spacing:1px;color:var(--dim);text-align:right;margin-bottom:4px}
 .tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);background:var(--card)}
 .mgrid{display:grid;min-width:720px}
@@ -506,13 +413,10 @@ const CSS = `
 .pill-night{background:rgba(30,144,255,.18);color:var(--blue)}
 .pill-draft{font-size:7px;color:var(--gold);opacity:.8;animation:pulse 1.5s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.8}50%{opacity:.3}}
-
-/* Legend */
 .legend{display:flex;gap:16px;padding:12px 0 0;flex-wrap:wrap}
 .legend-item{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--dim);letter-spacing:.5px}
 .legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
 .draft-dot{background:transparent;border:1px solid var(--gold)}
-
 @media(min-width:768px){
   .cp{padding:36px 32px 48px}
   .nav-lbl{display:inline}

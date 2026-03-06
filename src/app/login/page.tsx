@@ -46,11 +46,22 @@ export default function LoginPage() {
         return;
       }
 
-      const role = userDoc.data().role;
-      if (role === "admin") router.push("/admin");
+      const role = (userDoc.data().role || userDoc.data().authRole || "").toLowerCase();
+
+      if (!role) {
+        alert("El usuario no tiene un rol asignado");
+        setLoading(false);
+        return;
+      }
+
+      // ── Guardar rol en cookie para el middleware ──
+      document.cookie = `isc-role=${role}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Strict`;
+
+      if (role === "admin")            router.push("/admin");
       else if (role === "coordinador") router.push("/coordinador");
-      else if (role === "vigilante") router.push("/vigilante");
-      else router.push("/");
+      else if (role === "vigilante")   router.push("/vigilante");
+      else                             router.push("/");
+
     } catch (error) {
       console.error("Error al iniciar sesión:", error);
       alert("Credenciales incorrectas");
@@ -96,7 +107,6 @@ export default function LoginPage() {
           font-family: 'Montserrat', sans-serif;
         }
 
-        /* ── Wrapper ── */
         .login-wrapper {
           min-height: 100vh;
           background: var(--black);
@@ -107,7 +117,6 @@ export default function LoginPage() {
           overflow: hidden;
         }
 
-        /* Patrón geométrico de fondo */
         .login-wrapper::before {
           content: '';
           position: absolute;
@@ -119,7 +128,6 @@ export default function LoginPage() {
           pointer-events: none;
         }
 
-        /* Glow central */
         .login-wrapper::after {
           content: '';
           position: absolute;
@@ -132,7 +140,6 @@ export default function LoginPage() {
           pointer-events: none;
         }
 
-        /* Esquinas decorativas */
         .corner {
           position: absolute;
           width: 40px;
@@ -144,7 +151,6 @@ export default function LoginPage() {
         .corner-bl { bottom: 20px; left: 20px; border-bottom: 1px solid var(--gold); border-left: 1px solid var(--gold); }
         .corner-br { bottom: 20px; right: 20px; border-bottom: 1px solid var(--gold); border-right: 1px solid var(--gold); }
 
-        /* ── Card ── */
         .login-card {
           position: relative;
           z-index: 10;
@@ -165,7 +171,6 @@ export default function LoginPage() {
           to   { opacity: 1; transform: translateY(0); }
         }
 
-        /* ── Ornamento superior ── */
         .ornament {
           display: flex;
           align-items: center;
@@ -190,7 +195,6 @@ export default function LoginPage() {
           box-shadow: 0 0 10px rgba(201,168,76,0.6);
         }
 
-        /* ── Logo ── */
         .logo-wrap {
           text-align: center;
           animation: fadeUp 0.8s ease 0.15s both;
@@ -202,7 +206,6 @@ export default function LoginPage() {
           object-fit: cover;
         }
 
-        /* ── Título ── */
         .login-title {
           font-family: 'Cormorant Garamond', serif;
           font-size: 36px;
@@ -219,7 +222,6 @@ export default function LoginPage() {
           font-weight: 600;
         }
 
-        /* Línea divisora */
         .divider {
           width: 48px;
           height: 1px;
@@ -228,7 +230,6 @@ export default function LoginPage() {
           animation: fadeUp 0.8s ease 0.25s both;
         }
 
-        /* ── Grupos de campo ── */
         .field-group {
           position: relative;
           margin-bottom: 20px;
@@ -263,7 +264,6 @@ export default function LoginPage() {
           padding: 13px 16px;
           outline: none;
           transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
-          /* Clip angular igual que el botón de la home */
           clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
         }
         .field-input::placeholder { color: transparent; }
@@ -276,12 +276,10 @@ export default function LoginPage() {
           border-color: var(--error);
         }
 
-        /* Input con botón ojo */
         .field-input.with-toggle {
           padding-right: 44px;
         }
 
-        /* Botón mostrar/ocultar contraseña */
         .pwd-toggle {
           position: absolute;
           right: 10px;
@@ -300,7 +298,6 @@ export default function LoginPage() {
         .pwd-toggle:hover { opacity: 1; }
         .pwd-toggle svg { width: 18px; height: 18px; }
 
-        /* Mensaje de error */
         .field-error {
           margin-top: 6px;
           font-size: 10px;
@@ -316,7 +313,6 @@ export default function LoginPage() {
           opacity: 0.6;
         }
 
-        /* ── Botón principal ── */
         .btn-login {
           margin-top: 32px;
           width: 100%;
@@ -351,7 +347,6 @@ export default function LoginPage() {
           transform: none;
         }
 
-        /* Spinner */
         .btn-spinner {
           width: 14px;
           height: 14px;
@@ -365,7 +360,6 @@ export default function LoginPage() {
           to { transform: rotate(360deg); }
         }
 
-        /* ── Ornamento inferior ── */
         .bottom-ornament {
           display: flex;
           align-items: center;
@@ -391,21 +385,18 @@ export default function LoginPage() {
       `}</style>
 
       <div className="login-wrapper">
-        {/* Esquinas */}
         <div className="corner corner-tl" />
         <div className="corner corner-tr" />
         <div className="corner corner-bl" />
         <div className="corner corner-br" />
 
         <div className="login-card">
-          {/* Ornamento superior */}
           <div className="ornament">
             <div className="ornament-line" />
             <div className="ornament-diamond" />
             <div className="ornament-line right" />
           </div>
 
-          {/* Logo + Título */}
           <div className="logo-wrap">
             <Image
               src="/imgs/logo.jpg"
@@ -420,7 +411,6 @@ export default function LoginPage() {
 
           <div className="divider" />
 
-          {/* Campo email */}
           <div className={`field-group${emailError ? " has-error" : ""}`}>
             <label className="field-label">Correo electrónico</label>
             <div className="field-input-wrap">
@@ -437,7 +427,6 @@ export default function LoginPage() {
             {emailError && <div className="field-error">{emailError}</div>}
           </div>
 
-          {/* Campo contraseña */}
           <div className={`field-group${passwordError ? " has-error" : ""}`}>
             <label className="field-label">Contraseña</label>
             <div className="field-input-wrap">
@@ -473,7 +462,6 @@ export default function LoginPage() {
             {passwordError && <div className="field-error">{passwordError}</div>}
           </div>
 
-          {/* Botón */}
           <button
             onClick={handleLogin}
             disabled={loading}
@@ -490,7 +478,6 @@ export default function LoginPage() {
             )}
           </button>
 
-          {/* Ornamento inferior */}
           <div className="bottom-ornament">
             <div className="bottom-ornament-line" />
             <span className="bottom-ornament-text">Acceso seguro</span>
