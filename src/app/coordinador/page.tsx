@@ -159,12 +159,11 @@ export default function CoordinadorPage() {
           </div>
           <div className="cp-header-right">
             <nav className="cp-nav">
-              <Link href="/admin/alertas" className="cp-nav-btn">
-                🔔 <span className="nav-lbl">Alertas</span>
+<Link href="/coordinador/alertas" className="cp-nav-btn">                🔔 <span className="nav-lbl">Alertas</span>
                 {alerts.length>0 && <span className="nav-badge">{alerts.length}</span>}
               </Link>
-              <Link href="/admin/historial" className="cp-nav-btn">📋 <span className="nav-lbl">Historial</span></Link>
-              <Link href="/admin/personal"  className="cp-nav-btn">👥 <span className="nav-lbl">Personal</span></Link>
+              <Link href="/coordinador/historial" className="cp-nav-btn">📋 <span className="nav-lbl">Historial</span></Link>
+              <Link href="/coordinador/personal"  className="cp-nav-btn">👥 <span className="nav-lbl">Personal</span></Link>
             </nav>
             <div className="cp-user">
               <span className="cp-user-name">{userName}</span>
