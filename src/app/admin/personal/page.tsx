@@ -117,8 +117,6 @@ export default function PersonalPage() {
   const [loadingAsgs,   setLoadingAsgs]   = useState(false);
   const [confirmToggle, setConfirmToggle] = useState<Personnel | null>(null);
   const [createdCreds,  setCreatedCreds]  = useState<{ email: string; password: string } | null>(null);
-  const [showPass,      setShowPass]      = useState(false);
-  const [showFormPass,  setShowFormPass]  = useState(false);
 
   // ── Firestore ──
   useEffect(() => {
@@ -185,7 +183,7 @@ export default function PersonalPage() {
   }
 
   function openView(p: Personnel) {
-    setSelected(p); setModal("view"); setShowPass(false); loadAssignments(p.id);
+    setSelected(p); setModal("view"); loadAssignments(p.id);
   }
 
   function openEdit(p: Personnel) {
@@ -215,7 +213,6 @@ export default function PersonalPage() {
       password:   p.password    || "",
     });
     setFormPassword(p.password || "");
-    setShowFormPass(false);
     setFormError("");
     setModal("edit");
   }
@@ -224,12 +221,10 @@ export default function PersonalPage() {
     setSelected(null);
     setForm(EMPTY_FORM());
     setFormPassword("");
-    setShowFormPass(false);
     setFormError("");
     setModal("new");
   }
 
-  // ── FIX: handleSave con onAuthStateChanged para evitar auth.currentUser null ──
   async function handleSave() {
     if (!form.fullName.trim())  { setFormError("El nombre completo es obligatorio."); return; }
     if (!form.docNumber.trim()) { setFormError(`El número de ${form.docType} es obligatorio.`); return; }
@@ -243,15 +238,14 @@ export default function PersonalPage() {
 
     try {
       const data: any = {
-  ...form,
-  age: form.birthDate ? calcAge(form.birthDate) : (form.age ? Number(form.age) : null),
-};
-delete data.email;
+        ...form,
+        age: form.birthDate ? calcAge(form.birthDate) : (form.age ? Number(form.age) : null),
+      };
+      delete data.email;
 
-const cleanData = JSON.parse(JSON.stringify(data));
+      const cleanData = JSON.parse(JSON.stringify(data));
 
       if (modal === "new") {
-        // FIX: esperar a que Firebase resuelva el usuario actual en lugar de usar auth.currentUser
         const currentUser = await new Promise<import("firebase/auth").User | null>((resolve) => {
           const unsub = auth.onAuthStateChanged((user) => {
             unsub();
@@ -271,10 +265,10 @@ const cleanData = JSON.parse(JSON.stringify(data));
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
           body: JSON.stringify({
-  email: form.email?.trim(),
-  password: formPassword,
-  personnelData: cleanData,  
-}),
+            email: form.email?.trim(),
+            password: formPassword,
+            personnelData: cleanData,
+          }),
         });
 
         const json = await res.json();
@@ -307,10 +301,9 @@ const cleanData = JSON.parse(JSON.stringify(data));
     if (modal === "view") setSelected((prev) => prev ? { ...prev, status: next } : null);
   }
 
-  // ── FIX: exportCSV con String() en todos los valores antes de .replace() ──
   function exportCSV() {
     const rows = [
-      ["Nombre","Doc","Número","Teléfono","F. Nacimiento","Edad","Rol","Estado","Planilla","Razón Social","Forma Pago","Fecha inicio","Categoría","Banco","Cuenta","Email"],
+      ["Nombre","Doc","Número","Teléfono","F. Nacimiento","Edad","Rol","Estado","Planilla","Razón Social","Forma Pago","Fecha inicio","Categoría","Banco","Cuenta"],
       ...filtered.map((p) => [
         p.fullName          ?? "",
         p.docType           ?? "DNI",
@@ -327,10 +320,8 @@ const cleanData = JSON.parse(JSON.stringify(data));
         p.category     ?? "",
         p.bank         ?? "",
         p.bankAccount  ?? "",
-        p.email        ?? "",
       ]),
     ];
-    // Convertir TODOS los valores a string antes de .replace()
     const csv  = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url  = URL.createObjectURL(blob);
@@ -393,7 +384,7 @@ const cleanData = JSON.parse(JSON.stringify(data));
         <div className="search-bar">
           <div className="search-input-wrap">
             <span className="search-icon">🔍</span>
-            <input className="search-input" type="text" placeholder="Nombre, documento, email…"
+            <input className="search-input" type="text" placeholder="Nombre, documento, teléfono…"
               value={search} onChange={(e) => setSearch(e.target.value)} />
             {search && <button className="search-clear" onClick={() => setSearch("")}>✕</button>}
           </div>
@@ -474,7 +465,6 @@ const cleanData = JSON.parse(JSON.stringify(data));
                 <div className="view-hero-info">
                   <h2 className="view-name">{selected.fullName}</h2>
                   <p className="view-cedula">{selected.docType||"DNI"} {selected.docNumber||(selected as any).cedula}</p>
-                  {selected.email && <p className="view-email">✉️ {selected.email}</p>}
                   <div className="view-badges">
                     <span className="role-badge" style={{color:ROLE_CONFIG[selected.role]?.color,background:ROLE_CONFIG[selected.role]?.bg,borderColor:ROLE_CONFIG[selected.role]?.border}}>{ROLE_CONFIG[selected.role]?.icon} {ROLE_CONFIG[selected.role]?.label}</span>
                     <span className="status-badge" style={{color:STATUS_CONFIG[selected.status]?.color,background:STATUS_CONFIG[selected.status]?.bg}}>{STATUS_CONFIG[selected.status]?.label}</span>
@@ -512,27 +502,6 @@ const cleanData = JSON.parse(JSON.stringify(data));
                   <div className="data-grid">
                     <DataItem label="Banco"  value={selected.bank||"—"}/>
                     <DataItem label="Cuenta" value={selected.bankAccount||"—"}/>
-                  </div>
-                </div>
-
-                <div className="view-section">
-                  <p className="section-title">🔐 Acceso al sistema</p>
-                  <div className="data-grid">
-                    <DataItem label="Correo"        value={selected.email||"—"}/>
-                    <DataItem label="Rol de acceso" value={selected.authRole||"—"}/>
-                    <div className="data-item data-item-full">
-                      <span className="data-lbl">Contraseña</span>
-                      <div className="pass-view-row">
-                        <span className="data-val pass-value">
-                          {selected.password ? (showPass ? selected.password : "••••••••") : "—"}
-                        </span>
-                        {selected.password && (
-                          <button className="btn-show-pass" onClick={() => setShowPass(v => !v)}>
-                            {showPass ? "🙈 Ocultar" : "👁 Ver"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 </div>
 
@@ -712,39 +681,13 @@ const cleanData = JSON.parse(JSON.stringify(data));
                     <input type="text" placeholder="123-456789-0-12" value={form.bankAccount} onChange={(e) => setField("bankAccount",e.target.value)}/>
                   </div>
                 </div>
-
-                <p className="form-section-title">🔐 Acceso al sistema</p>
-                {modal==="new" && (
-                  <div className="auth-notice">Al guardar se creará automáticamente el usuario en Firebase Auth.</div>
-                )}
-                <div className="form-grid">
-                  <div className="form-field form-field-full">
-                    <label>Correo electrónico {modal==="new"?"*":""}</label>
-                    <input type="email" placeholder="juan@ejemplo.com"
-                      value={form.email} onChange={(e) => setField("email",e.target.value)}/>
-                  </div>
-                  <div className="form-field form-field-full">
-                    <label>{modal==="new"?"Contraseña inicial * (mín. 6 caracteres)":"Contraseña guardada"}</label>
-                    <div className="pass-input-wrap">
-                      <input
-                        type={showFormPass?"text":"password"}
-                        placeholder={modal==="new"?"Mín. 6 caracteres":"Contraseña actual"}
-                        value={modal==="new"?formPassword:(form.password||"")}
-                        onChange={(e) => modal==="new"?setFormPassword(e.target.value):setField("password",e.target.value)}
-                      />
-                      <button type="button" className="btn-toggle-pass" onClick={() => setShowFormPass(v=>!v)}>
-                        {showFormPass?"🙈":"👁"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {formError && <p className="form-error">⚠ {formError}</p>}
 
               <div className="form-actions">
                 <button className="btn-save" onClick={handleSave} disabled={saving}>
-                  {saving?<><span className="spinner-sm"/> Guardando…</>:modal==="new"?"Crear perfil y usuario":"Guardar cambios"}
+                  {saving?<><span className="spinner-sm"/> Guardando…</>:modal==="new"?"Crear perfil":"Guardar cambios"}
                 </button>
                 <button className="btn-cancel" onClick={() => setModal(null)}>Cancelar</button>
               </div>
@@ -757,13 +700,8 @@ const cleanData = JSON.parse(JSON.stringify(data));
           <div className="overlay overlay-confirm">
             <div className="modal modal-confirm">
               <div className="confirm-icon">✅</div>
-              <h3 className="confirm-title">Usuario creado</h3>
-              <p className="confirm-body">Comparte estas credenciales con la persona:</p>
-              <div className="creds-box">
-                <div className="cred-row"><span className="cred-lbl">Correo</span><span className="cred-val">{createdCreds.email}</span></div>
-                <div className="cred-row"><span className="cred-lbl">Contraseña</span><span className="cred-val cred-mono">{createdCreds.password}</span></div>
-              </div>
-              <p className="confirm-hint">Se recomienda que el usuario cambie su contraseña al ingresar.</p>
+              <h3 className="confirm-title">Perfil creado</h3>
+              <p className="confirm-body">El perfil fue registrado correctamente.</p>
               <div className="confirm-actions">
                 <button className="btn-confirm btn-confirm-green" onClick={() => setCreatedCreds(null)}>Entendido</button>
               </div>
@@ -889,8 +827,7 @@ const CSS = `
 .view-avatar-initials{display:flex;align-items:center;justify-content:center;border:1px solid;font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:600}
 .view-hero-info{flex:1;min-width:0}
 .view-name{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:400;color:var(--white);margin-bottom:2px}
-.view-cedula{font-size:10px;color:var(--dim);margin-bottom:2px}
-.view-email{font-size:10px;color:var(--dim);margin-bottom:8px}
+.view-cedula{font-size:10px;color:var(--dim);margin-bottom:8px}
 .view-badges{display:flex;gap:6px;flex-wrap:wrap}
 .btn-edit-profile{margin-left:auto;padding:7px 14px;background:transparent;border:1px solid var(--border);color:var(--gold);font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;letter-spacing:1px;cursor:pointer;transition:background .2s;align-self:flex-start;white-space:nowrap;clip-path:polygon(5px 0%,100% 0%,calc(100% - 5px) 100%,0% 100%)}
 .btn-edit-profile:hover{background:rgba(201,168,76,.08)}
@@ -902,14 +839,6 @@ const CSS = `
 .data-item-full{grid-column:1/-1}
 .data-lbl{font-size:8px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
 .data-val{font-size:12px;color:var(--white)}
-.pass-view-row{display:flex;align-items:center;gap:10px}
-.pass-value{font-family:monospace;font-size:13px;letter-spacing:1px}
-.btn-show-pass{padding:3px 10px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:var(--gold);font-family:'Montserrat',sans-serif;font-size:9px;font-weight:600;cursor:pointer;transition:background .15s;white-space:nowrap}
-.btn-show-pass:hover{background:rgba(201,168,76,.16)}
-.pass-input-wrap{position:relative;display:flex}
-.pass-input-wrap input{flex:1;padding-right:44px}
-.btn-toggle-pass{position:absolute;right:0;top:0;bottom:0;width:40px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-left:none;color:var(--dim);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:color .15s}
-.btn-toggle-pass:hover{color:var(--gold)}
 .loading-inline{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);padding:8px 0}
 .no-asgs{font-size:11px;color:var(--dim);font-style:italic;padding:8px 0}
 .asgs-list{display:flex;flex-direction:column;gap:5px}
@@ -947,7 +876,6 @@ const CSS = `
 .doc-type-active{border-color:var(--gold)!important;color:var(--gold)!important;background:rgba(201,168,76,.1)!important}
 .check-label{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:11px;color:var(--dim)}
 .check-label input[type="checkbox"]{accent-color:var(--gold);width:14px;height:14px;cursor:pointer}
-.auth-notice{background:rgba(77,163,255,.07);border:1px solid rgba(77,163,255,.2);color:rgba(77,163,255,.9);font-size:10px;padding:10px 12px;line-height:1.5;margin-bottom:4px}
 .form-error{margin:0 20px;padding:10px 12px;background:rgba(229,115,115,.1);border:1px solid rgba(229,115,115,.3);color:var(--red);font-size:11px;flex-shrink:0}
 .form-actions{display:flex;gap:8px;padding:14px 20px;border-top:1px solid rgba(255,255,255,.06);flex-shrink:0}
 .btn-save{flex:1;padding:13px;background:var(--gold);color:var(--black);border:none;font-family:'Montserrat',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:opacity .2s;display:flex;align-items:center;justify-content:center;gap:8px;clip-path:polygon(6px 0%,100% 0%,calc(100% - 6px) 100%,0% 100%)}
@@ -963,16 +891,10 @@ const CSS = `
 .confirm-icon{font-size:36px}
 .confirm-title{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;color:var(--white)}
 .confirm-body{font-size:11px;color:var(--dim);line-height:1.6}
-.confirm-hint{font-size:10px;color:var(--dim);font-style:italic}
 .confirm-actions{display:flex;gap:8px;width:100%;margin-top:4px}
 .btn-confirm{flex:1;padding:11px;border:1px solid;background:transparent;font-family:'Montserrat',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:background .2s}
 .btn-confirm-red{border-color:rgba(229,115,115,.4);color:var(--red)}.btn-confirm-red:hover{background:rgba(229,115,115,.1)}
 .btn-confirm-green{border-color:rgba(129,199,132,.4);color:var(--green)}.btn-confirm-green:hover{background:rgba(129,199,132,.1)}
-.creds-box{background:rgba(255,255,255,.04);border:1px solid rgba(201,168,76,.2);padding:14px 16px;width:100%;display:flex;flex-direction:column;gap:8px;text-align:left}
-.cred-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.cred-lbl{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--dim);flex-shrink:0}
-.cred-val{font-size:12px;color:var(--white);word-break:break-all}
-.cred-mono{font-family:monospace;font-size:14px;color:var(--gold);font-weight:700}
 @media(min-width:768px){
   .pp{padding:36px 32px 48px}
   .overlay{align-items:center}
