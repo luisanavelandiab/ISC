@@ -345,7 +345,7 @@ export default function PersonalPage() {
         {/* Header */}
         <div className="pp-header">
           <div className="pp-header-left">
-            <Link href="/dashboard" className="pp-back">← Dashboard</Link>
+            <Link href="/coordinador" className="pp-back">← Dashboard</Link>
             <div>
               <p className="pp-eye">Gestión de recursos humanos</p>
               <h1 className="pp-title">Registro de <span>Personal</span></h1>

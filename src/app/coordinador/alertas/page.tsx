@@ -238,7 +238,7 @@ export default function AlertasPage() {
 
         {/* ── Header ── */}
         <div className="ap-header">
-          <Link href="/admin" className="ap-back">← Dashboard</Link>
+          <Link href="/coordinador" className="ap-back">← Dashboard</Link>
           <div>
             <p className="ap-eye">Sistema de monitoreo</p>
             <h1 className="ap-title">Centro de <span>Alertas</span></h1>
