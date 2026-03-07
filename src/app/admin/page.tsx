@@ -49,6 +49,8 @@ interface Guard {
   certifications?: string[];
   state?: string;
   authRole?: string;
+  role?: string;       // "vigilante" | "descansero" | "supervisor"
+  status?: string;     // "activo" | "inactivo" | etc.
 }
 interface Assignment {
   id: string;
@@ -120,13 +122,12 @@ function fmtRange(days: Date[]) {
 function dateKey(d: Date) { return d.toISOString().slice(0, 10); }
 
 function isGuardAvailable(g: Guard) {
-  return (
-    g.available === true ||
-    (g.available as any) === "true" ||
-    g.state === "Activo" ||
-    g.state === "activo" ||
-    g.available === undefined
-  );
+  // Block only if explicitly marked inactive/suspended
+  const state  = (g.state  || "").toLowerCase();
+  const status = (g.status || "").toLowerCase();
+  if (state  === "inactivo"  || state  === "suspendido") return false;
+  if (status === "inactivo"  || status === "suspendido") return false;
+  return true; // Default: available (includes supervisores, descanseros, etc.)
 }
 
 // Excluir solo admin/coordinador del selector — supervisores SÍ se pueden asignar
@@ -377,7 +378,7 @@ export default function DashboardPage() {
         guardName:     guard.name,
         guardCategory: guard.category  || "",
         guardAuthRole: guard.authRole  || "",
-        guardRole:     (guard as any).role || "",
+        guardRole:     guard.role       || "",
         date:          Timestamp.fromDate(modal.date),
         shift:         selShift,
         status:        "borrador",
@@ -517,7 +518,7 @@ export default function DashboardPage() {
         {/* KPIs */}
         <div className="kpi-row">
           <div className="kpi"><div className="kpi-lbl">Unidades</div><div className="kpi-val">{units.length}</div></div>
-          <div className="kpi"><div className="kpi-lbl">Vigilantes</div><div className="kpi-val">{assignableGuards.length}</div></div>
+          <div className="kpi"><div className="kpi-lbl">Agentes</div><div className="kpi-val">{assignableGuards.length}</div></div>
           <div className="kpi">
             <div className="kpi-lbl">Cobertura</div>
             <div className="kpi-val" style={{ color: coveragePct>=90?"#81C784":coveragePct>=60?"var(--gold)":"#E57373" }}>{coveragePct}%</div>
@@ -722,7 +723,7 @@ export default function DashboardPage() {
           <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget){setModal(null);setValidationResult(null);}}}>
             <div className="modal">
               <div className="modal-handle"/>
-              <h3 className="modal-title">Asignar Vigilante</h3>
+              <h3 className="modal-title">Asignar Agente</h3>
 
               <div className="modal-info">
                 <span><strong>Unidad:</strong> {modal.unitName}</span>
@@ -797,14 +798,14 @@ export default function DashboardPage() {
                 </button>
                 <button className="btn-s" onClick={()=>{setModal(null);setValidationResult(null);}}>Cancelar</button>
               </div>
-              <p className="modal-note">💡 Se guarda como borrador. Usa Publicar para que los vigilantes lo vean.</p>
+              <p className="modal-note">💡 Se guarda como borrador. Usa Publicar para que los agentes lo vean.</p>
             </div>
           </div>
         )}
 
         {/* Toast */}
         {publishSuccess && (
-          <div className="toast-success">✓ Cambios publicados — los vigilantes ya pueden verlos</div>
+          <div className="toast-success">✓ Cambios publicados — los agentes ya pueden verlos</div>
         )}
       </div>
     </>

@@ -58,7 +58,7 @@ interface Assignment {
 }
 
 const ROLE_CONFIG: Record<Role, { label: string; icon: string; color: string; bg: string; border: string }> = {
-  vigilante:  { label: "Agente",  icon: "🛡", color: "#C9A84C", bg: "rgba(201,168,76,.1)",  border: "rgba(201,168,76,.3)"  },
+  vigilante:  { label: "Vigilante",  icon: "🛡", color: "#C9A84C", bg: "rgba(201,168,76,.1)",  border: "rgba(201,168,76,.3)"  },
   descansero: { label: "Descansero", icon: "🔄", color: "#4DA3FF", bg: "rgba(77,163,255,.1)",  border: "rgba(77,163,255,.3)"  },
   supervisor: { label: "Supervisor", icon: "⭐", color: "#81C784", bg: "rgba(129,199,132,.1)", border: "rgba(129,199,132,.3)" },
 };
@@ -117,6 +117,8 @@ export default function PersonalPage() {
   const [loadingAsgs,   setLoadingAsgs]   = useState(false);
   const [confirmToggle, setConfirmToggle] = useState<Personnel | null>(null);
   const [createdCreds,  setCreatedCreds]  = useState<{ email: string; password: string } | null>(null);
+  const [showPass,      setShowPass]      = useState(false); // ver perfil
+  const [showFormPass,  setShowFormPass]  = useState(false); // formulario editar
 
   // ── Firestore ──
   useEffect(() => {
@@ -151,7 +153,8 @@ export default function PersonalPage() {
         return (
           p.fullName?.toLowerCase().includes(q) ||
           p.docNumber?.toLowerCase().includes(q) ||
-          p.phone?.toLowerCase().includes(q)
+          p.phone?.toLowerCase().includes(q) ||
+          p.email?.toLowerCase().includes(q)
         );
       }
       return true;
@@ -182,7 +185,7 @@ export default function PersonalPage() {
   }
 
   function openView(p: Personnel) {
-    setSelected(p); setModal("view"); loadAssignments(p.id);
+    setSelected(p); setModal("view"); setShowPass(false); loadAssignments(p.id);
   }
 
   function openEdit(p: Personnel) {
@@ -212,6 +215,7 @@ export default function PersonalPage() {
       password:   p.password    || "",
     });
     setFormPassword(p.password || "");
+    setShowFormPass(false);
     setFormError("");
     setModal("edit");
   }
@@ -220,6 +224,7 @@ export default function PersonalPage() {
     setSelected(null);
     setForm(EMPTY_FORM());
     setFormPassword("");
+    setShowFormPass(false);
     setFormError("");
     setModal("new");
   }
@@ -242,31 +247,18 @@ export default function PersonalPage() {
       };
       delete data.email;
 
-      const cleanData = JSON.parse(JSON.stringify(data));
-
       if (modal === "new") {
-        const currentUser = await new Promise<import("firebase/auth").User | null>((resolve) => {
-          const unsub = auth.onAuthStateChanged((user) => {
-            unsub();
-            resolve(user);
-          });
-        });
-
-        if (!currentUser) {
-          setFormError("Sesión expirada. Recarga la página.");
-          setSaving(false);
-          return;
-        }
-
+        const currentUser = auth.currentUser;
+        if (!currentUser) { setFormError("Sesión expirada. Recarga la página."); setSaving(false); return; }
         const idToken = await currentUser.getIdToken();
 
         const res = await fetch("/api/create-user", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
           body: JSON.stringify({
-            email: form.email?.trim(),
+            email: form.email,
             password: formPassword,
-            personnelData: cleanData,
+            personnelData: { ...data, password: formPassword },
           }),
         });
 
@@ -277,6 +269,7 @@ export default function PersonalPage() {
         setModal(null);
 
       } else if (selected) {
+        // En edición también guardamos la contraseña actualizada si se cambió
         const updateData: any = { ...data, updatedAt: Timestamp.now() };
         if (formPassword) updateData.password = formPassword;
         await updateDoc(doc(db, "personnel", selected.id), updateData);
@@ -300,34 +293,96 @@ export default function PersonalPage() {
     if (modal === "view") setSelected((prev) => prev ? { ...prev, status: next } : null);
   }
 
-  function exportCSV() {
-    const rows = [
-      ["Nombre","Doc","Número","Teléfono","F. Nacimiento","Edad","Rol","Estado","Planilla","Razón Social","Forma Pago","Fecha inicio","Categoría","Banco","Cuenta"],
-      ...filtered.map((p) => [
-        p.fullName          ?? "",
-        p.docType           ?? "DNI",
-        p.docNumber         ?? (p as any).cedula ?? "",
-        p.phone             ?? "",
-        p.birthDate         ?? "",
-        p.age != null ? String(p.age) : "",
-        ROLE_CONFIG[p.role]?.label    ?? p.role   ?? "",
-        STATUS_CONFIG[p.status]?.label ?? p.status ?? "",
-        p.enPlanilla ? "Sí" : "No",
-        p.razonSocial  ?? "",
-        p.formaPago    ?? "",
-        p.startDate    ?? "",
-        p.category     ?? "",
-        p.bank         ?? "",
-        p.bankAccount  ?? "",
-      ]),
+  async function exportXLSX() {
+    const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs" as any);
+    const wb = XLSX.utils.book_new();
+
+    const fmtDate = (v: any) => {
+      if (!v) return "";
+      const d = v instanceof Date ? v : new Date(v);
+      return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString("es-PE");
+    };
+
+    const activos = filtered.filter(p => p.status === "activo" || p.status === "reingreso");
+    const cesados = filtered.filter(p => p.status === "inactivo" || p.status === "suspendido");
+
+    const HEADERS = [
+      "N°","ACT/CES","PLANILLA","FECHA DE INGRESO","RAZON SOCIAL","F DE PAGO",
+      "APELLIDOS Y NOMBRES","TIPO DE DOC","N° DOC.","F. NACIMIENTO","EDAD",
+      "NUMERO TELEFONICO","CORREO ELECTRONICO","DIRECCION",
+      "NUMERO DE CUENTA","BANCO","CATEGORIA","ROL","ESTADO",
     ];
-    const csv  = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url; a.download = `personal_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
-    URL.revokeObjectURL(url);
+    const COL_WIDTHS = [5,12,12,16,22,20,40,12,16,14,7,22,36,40,22,14,14,14,12];
+
+    const buildRows = (list: typeof filtered) =>
+      list.map((p, i) => [
+        i + 1,
+        (p.status === "activo" || p.status === "reingreso") ? "ACTIVO" : "CESADO",
+        p.enPlanilla ? "SI" : "NO",
+        fmtDate(p.startDate),
+        (p.razonSocial || "").toUpperCase(),
+        (p.formaPago   || "").toUpperCase(),
+        (p.fullName    || "").toUpperCase(),
+        (p.docType     || "DNI").toUpperCase(),
+        p.docNumber    ?? (p as any).cedula ?? "",
+        fmtDate(p.birthDate),
+        p.age != null ? p.age : "",
+        p.phone        || "",
+        p.email        || "",
+        p.address      || "",
+        p.bankAccount  || "",
+        (p.bank        || "").toUpperCase(),
+        (p.category    || "").toUpperCase(),
+        ROLE_CONFIG[p.role]?.label ?? p.role ?? "",
+        STATUS_CONFIG[p.status]?.label ?? p.status ?? "",
+      ]);
+
+    const addSheet = (name: string, list: typeof filtered) => {
+      const data = [HEADERS, ...buildRows(list)];
+      const ws: any = XLSX.utils.aoa_to_sheet(data);
+      ws["!cols"] = COL_WIDTHS.map(w => ({ wch: w }));
+      ws["!rows"] = data.map((_: any, i: number) => ({ hpt: i === 0 ? 32 : 20 }));
+
+      // Header row style
+      HEADERS.forEach((_: any, ci: number) => {
+        const addr = XLSX.utils.encode_cell({ r: 0, c: ci });
+        if (!ws[addr]) return;
+        ws[addr].s = {
+          font:      { bold: true, name: "Arial", sz: 10, color: { rgb: "FFFFFF" } },
+          fill:      { patternType: "solid", fgColor: { rgb: "1F3864" } },
+          alignment: { horizontal: "center", vertical: "center", wrapText: true },
+          border:    { top:{style:"thin",color:{rgb:"888888"}}, bottom:{style:"thin",color:{rgb:"888888"}}, left:{style:"thin",color:{rgb:"888888"}}, right:{style:"thin",color:{rgb:"888888"}} },
+        };
+      });
+
+      // Data rows style
+      buildRows(list).forEach((row: any[], ri: number) => {
+        const isActivo = row[1] === "ACTIVO";
+        const bg = isActivo
+          ? (ri % 2 === 0 ? "FFFF00" : "FFFACD")
+          : (ri % 2 === 0 ? "FFDADA" : "FFCCCC");
+        row.forEach((_: any, ci: number) => {
+          const addr = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
+          if (!ws[addr]) ws[addr] = { t: "z", v: "" };
+          ws[addr].s = {
+            font:      { name: "Arial", sz: 9, bold: ci === 6 },
+            fill:      { patternType: "solid", fgColor: { rgb: bg } },
+            alignment: { vertical: "center" },
+            border:    { top:{style:"thin",color:{rgb:"CCCCCC"}}, bottom:{style:"thin",color:{rgb:"CCCCCC"}}, left:{style:"thin",color:{rgb:"CCCCCC"}}, right:{style:"thin",color:{rgb:"CCCCCC"}} },
+          };
+        });
+      });
+
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    };
+
+    addSheet("ACTIVOS", activos);
+    if (cesados.length > 0) addSheet("CESADOS", cesados);
+    addSheet("TODOS", filtered);
+
+    XLSX.writeFile(wb, `personal_${new Date().toISOString().slice(0,10)}.xlsx`, { bookType: "xlsx", cellStyles: true });
   }
+
 
   function setField(key: string, value: any) {
     setForm((prev: any) => {
@@ -352,7 +407,7 @@ export default function PersonalPage() {
             </div>
           </div>
           <div className="pp-header-actions">
-            <button className="btn-export" onClick={exportCSV}>↓ CSV</button>
+            <button className="btn-export" onClick={exportXLSX}>↓ Excel</button>
             <button className="btn-new" onClick={openNew}>+ Nuevo perfil</button>
           </div>
         </div>
@@ -363,7 +418,7 @@ export default function PersonalPage() {
         <div className="role-tabs">
           {([
             ["todos","👥","Total activos",counts.todos],
-            ["vigilante","🛡","Agentes",counts.vigilante],
+            ["vigilante","🛡","Vigilantes",counts.vigilante],
             ["descansero","🔄","Descanseros",counts.descansero],
             ["supervisor","⭐","Supervisores",counts.supervisor],
           ] as const).map(([role,icon,label,count]) => (
@@ -383,7 +438,7 @@ export default function PersonalPage() {
         <div className="search-bar">
           <div className="search-input-wrap">
             <span className="search-icon">🔍</span>
-            <input className="search-input" type="text" placeholder="Nombre, documento, teléfono…"
+            <input className="search-input" type="text" placeholder="Nombre, documento, email…"
               value={search} onChange={(e) => setSearch(e.target.value)} />
             {search && <button className="search-clear" onClick={() => setSearch("")}>✕</button>}
           </div>
@@ -464,6 +519,7 @@ export default function PersonalPage() {
                 <div className="view-hero-info">
                   <h2 className="view-name">{selected.fullName}</h2>
                   <p className="view-cedula">{selected.docType||"DNI"} {selected.docNumber||(selected as any).cedula}</p>
+                  {selected.email && <p className="view-email">✉️ {selected.email}</p>}
                   <div className="view-badges">
                     <span className="role-badge" style={{color:ROLE_CONFIG[selected.role]?.color,background:ROLE_CONFIG[selected.role]?.bg,borderColor:ROLE_CONFIG[selected.role]?.border}}>{ROLE_CONFIG[selected.role]?.icon} {ROLE_CONFIG[selected.role]?.label}</span>
                     <span className="status-badge" style={{color:STATUS_CONFIG[selected.status]?.color,background:STATUS_CONFIG[selected.status]?.bg}}>{STATUS_CONFIG[selected.status]?.label}</span>
@@ -474,6 +530,7 @@ export default function PersonalPage() {
               </div>
 
               <div className="view-sections">
+                {/* Datos personales */}
                 <div className="view-section">
                   <p className="section-title">👤 Datos personales</p>
                   <div className="data-grid">
@@ -484,6 +541,7 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
+                {/* Datos laborales */}
                 <div className="view-section">
                   <p className="section-title">💼 Datos laborales</p>
                   <div className="data-grid">
@@ -496,6 +554,7 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
+                {/* Datos bancarios */}
                 <div className="view-section">
                   <p className="section-title">🏦 Datos bancarios</p>
                   <div className="data-grid">
@@ -504,6 +563,32 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
+                {/* Acceso al sistema */}
+                <div className="view-section">
+                  <p className="section-title">🔐 Acceso al sistema</p>
+                  <div className="data-grid">
+                    <DataItem label="Correo"        value={selected.email||"—"}/>
+                    <DataItem label="Rol de acceso" value={selected.authRole||"—"}/>
+                    <div className="data-item data-item-full">
+                      <span className="data-lbl">Contraseña</span>
+                      <div className="pass-view-row">
+                        <span className="data-val pass-value">
+                          {selected.password
+                            ? (showPass ? selected.password : "••••••••")
+                            : "—"
+                          }
+                        </span>
+                        {selected.password && (
+                          <button className="btn-show-pass" onClick={() => setShowPass(v => !v)}>
+                            {showPass ? "🙈 Ocultar" : "👁 Ver"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Últimos turnos */}
                 <div className="view-section">
                   <p className="section-title">📅 Últimos turnos</p>
                   {loadingAsgs
@@ -545,6 +630,7 @@ export default function PersonalPage() {
               </div>
 
               <div className="form-body">
+                {/* Datos personales */}
                 <p className="form-section-title">👤 Datos personales</p>
                 <div className="form-grid">
                   <div className="form-field form-field-full">
@@ -589,12 +675,13 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
+                {/* Datos laborales */}
                 <p className="form-section-title">💼 Datos laborales</p>
                 <div className="form-grid">
                   <div className="form-field">
                     <label>Rol en operaciones *</label>
                     <select value={form.role} onChange={(e) => setField("role",e.target.value)}>
-                      <option value="vigilante">🛡 Agente</option>
+                      <option value="vigilante">🛡 Vigilante</option>
                       <option value="descansero">🔄 Descansero</option>
                       <option value="supervisor">⭐ Supervisor</option>
                     </select>
@@ -602,7 +689,7 @@ export default function PersonalPage() {
                   <div className="form-field">
                     <label>Rol en el sistema (acceso)</label>
                     <select value={form.authRole} onChange={(e) => setField("authRole",e.target.value)}>
-                      <option value="vigilante">Agente</option>
+                      <option value="vigilante">Vigilante</option>
                       <option value="coordinador">Coordinador</option>
                       <option value="admin">Administrador</option>
                     </select>
@@ -650,7 +737,6 @@ export default function PersonalPage() {
                       <option value="PRIMER GRUPO">PRIMER GRUPO</option>
                       <option value="SEGUNDO GRUPO">SEGUNDO GRUPO</option>
                       <option value="TERCER GRUPO">TERCER GRUPO</option>
-                      <option value="CUARTO GRUPO">CUARTO GRUPO</option>
                       <option value="OFICINA">OFICINA</option>
                     </select>
                   </div>
@@ -666,6 +752,7 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
+                {/* Datos bancarios */}
                 <p className="form-section-title">🏦 Datos bancarios</p>
                 <div className="form-grid">
                   <div className="form-field">
@@ -680,13 +767,40 @@ export default function PersonalPage() {
                     <input type="text" placeholder="123-456789-0-12" value={form.bankAccount} onChange={(e) => setField("bankAccount",e.target.value)}/>
                   </div>
                 </div>
+
+                {/* Acceso al sistema */}
+                <p className="form-section-title">🔐 Acceso al sistema</p>
+                {modal==="new" && (
+                  <div className="auth-notice">Al guardar se creará automáticamente el usuario en Firebase Auth.</div>
+                )}
+                <div className="form-grid">
+                  <div className="form-field form-field-full">
+                    <label>Correo electrónico {modal==="new"?"*":""}</label>
+                    <input type="email" placeholder="juan@ejemplo.com"
+                      value={form.email} onChange={(e) => setField("email",e.target.value)}/>
+                  </div>
+                  <div className="form-field form-field-full">
+                    <label>{modal==="new"?"Contraseña inicial * (mín. 6 caracteres)":"Contraseña guardada"}</label>
+                    <div className="pass-input-wrap">
+                      <input
+                        type={showFormPass?"text":"password"}
+                        placeholder={modal==="new"?"Mín. 6 caracteres":"Contraseña actual"}
+                        value={modal==="new"?formPassword:(form.password||"")}
+                        onChange={(e) => modal==="new"?setFormPassword(e.target.value):setField("password",e.target.value)}
+                      />
+                      <button type="button" className="btn-toggle-pass" onClick={() => setShowFormPass(v=>!v)}>
+                        {showFormPass?"🙈":"👁"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {formError && <p className="form-error">⚠ {formError}</p>}
 
               <div className="form-actions">
                 <button className="btn-save" onClick={handleSave} disabled={saving}>
-                  {saving?<><span className="spinner-sm"/> Guardando…</>:modal==="new"?"Crear perfil":"Guardar cambios"}
+                  {saving?<><span className="spinner-sm"/> Guardando…</>:modal==="new"?"Crear perfil y usuario":"Guardar cambios"}
                 </button>
                 <button className="btn-cancel" onClick={() => setModal(null)}>Cancelar</button>
               </div>
@@ -694,13 +808,18 @@ export default function PersonalPage() {
           </div>
         )}
 
-        {/* Modal creación exitosa */}
+        {/* Modal credenciales */}
         {createdCreds && (
           <div className="overlay overlay-confirm">
             <div className="modal modal-confirm">
               <div className="confirm-icon">✅</div>
-              <h3 className="confirm-title">Perfil creado</h3>
-              <p className="confirm-body">El perfil fue registrado correctamente.</p>
+              <h3 className="confirm-title">Usuario creado</h3>
+              <p className="confirm-body">Comparte estas credenciales con la persona:</p>
+              <div className="creds-box">
+                <div className="cred-row"><span className="cred-lbl">Correo</span><span className="cred-val">{createdCreds.email}</span></div>
+                <div className="cred-row"><span className="cred-lbl">Contraseña</span><span className="cred-val cred-mono">{createdCreds.password}</span></div>
+              </div>
+              <p className="confirm-hint">Se recomienda que el usuario cambie su contraseña al ingresar.</p>
               <div className="confirm-actions">
                 <button className="btn-confirm btn-confirm-green" onClick={() => setCreatedCreds(null)}>Entendido</button>
               </div>
@@ -826,7 +945,8 @@ const CSS = `
 .view-avatar-initials{display:flex;align-items:center;justify-content:center;border:1px solid;font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:600}
 .view-hero-info{flex:1;min-width:0}
 .view-name{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:400;color:var(--white);margin-bottom:2px}
-.view-cedula{font-size:10px;color:var(--dim);margin-bottom:8px}
+.view-cedula{font-size:10px;color:var(--dim);margin-bottom:2px}
+.view-email{font-size:10px;color:var(--dim);margin-bottom:8px}
 .view-badges{display:flex;gap:6px;flex-wrap:wrap}
 .btn-edit-profile{margin-left:auto;padding:7px 14px;background:transparent;border:1px solid var(--border);color:var(--gold);font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;letter-spacing:1px;cursor:pointer;transition:background .2s;align-self:flex-start;white-space:nowrap;clip-path:polygon(5px 0%,100% 0%,calc(100% - 5px) 100%,0% 100%)}
 .btn-edit-profile:hover{background:rgba(201,168,76,.08)}
@@ -838,6 +958,16 @@ const CSS = `
 .data-item-full{grid-column:1/-1}
 .data-lbl{font-size:8px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
 .data-val{font-size:12px;color:var(--white)}
+/* Fila de contraseña en ver perfil */
+.pass-view-row{display:flex;align-items:center;gap:10px}
+.pass-value{font-family:monospace;font-size:13px;letter-spacing:1px}
+.btn-show-pass{padding:3px 10px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);color:var(--gold);font-family:'Montserrat',sans-serif;font-size:9px;font-weight:600;cursor:pointer;transition:background .15s;white-space:nowrap}
+.btn-show-pass:hover{background:rgba(201,168,76,.16)}
+/* Input contraseña en formulario */
+.pass-input-wrap{position:relative;display:flex}
+.pass-input-wrap input{flex:1;padding-right:44px}
+.btn-toggle-pass{position:absolute;right:0;top:0;bottom:0;width:40px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-left:none;color:var(--dim);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:color .15s}
+.btn-toggle-pass:hover{color:var(--gold)}
 .loading-inline{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);padding:8px 0}
 .no-asgs{font-size:11px;color:var(--dim);font-style:italic;padding:8px 0}
 .asgs-list{display:flex;flex-direction:column;gap:5px}
@@ -875,6 +1005,7 @@ const CSS = `
 .doc-type-active{border-color:var(--gold)!important;color:var(--gold)!important;background:rgba(201,168,76,.1)!important}
 .check-label{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:11px;color:var(--dim)}
 .check-label input[type="checkbox"]{accent-color:var(--gold);width:14px;height:14px;cursor:pointer}
+.auth-notice{background:rgba(77,163,255,.07);border:1px solid rgba(77,163,255,.2);color:rgba(77,163,255,.9);font-size:10px;padding:10px 12px;line-height:1.5;margin-bottom:4px}
 .form-error{margin:0 20px;padding:10px 12px;background:rgba(229,115,115,.1);border:1px solid rgba(229,115,115,.3);color:var(--red);font-size:11px;flex-shrink:0}
 .form-actions{display:flex;gap:8px;padding:14px 20px;border-top:1px solid rgba(255,255,255,.06);flex-shrink:0}
 .btn-save{flex:1;padding:13px;background:var(--gold);color:var(--black);border:none;font-family:'Montserrat',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:opacity .2s;display:flex;align-items:center;justify-content:center;gap:8px;clip-path:polygon(6px 0%,100% 0%,calc(100% - 6px) 100%,0% 100%)}
@@ -890,10 +1021,16 @@ const CSS = `
 .confirm-icon{font-size:36px}
 .confirm-title{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;color:var(--white)}
 .confirm-body{font-size:11px;color:var(--dim);line-height:1.6}
+.confirm-hint{font-size:10px;color:var(--dim);font-style:italic}
 .confirm-actions{display:flex;gap:8px;width:100%;margin-top:4px}
 .btn-confirm{flex:1;padding:11px;border:1px solid;background:transparent;font-family:'Montserrat',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:background .2s}
 .btn-confirm-red{border-color:rgba(229,115,115,.4);color:var(--red)}.btn-confirm-red:hover{background:rgba(229,115,115,.1)}
 .btn-confirm-green{border-color:rgba(129,199,132,.4);color:var(--green)}.btn-confirm-green:hover{background:rgba(129,199,132,.1)}
+.creds-box{background:rgba(255,255,255,.04);border:1px solid rgba(201,168,76,.2);padding:14px 16px;width:100%;display:flex;flex-direction:column;gap:8px;text-align:left}
+.cred-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.cred-lbl{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--dim);flex-shrink:0}
+.cred-val{font-size:12px;color:var(--white);word-break:break-all}
+.cred-mono{font-family:monospace;font-size:14px;color:var(--gold);font-weight:700}
 @media(min-width:768px){
   .pp{padding:36px 32px 48px}
   .overlay{align-items:center}
