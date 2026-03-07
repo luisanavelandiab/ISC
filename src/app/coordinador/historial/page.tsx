@@ -322,7 +322,7 @@ export default function HistorialPage() {
 
         {/* ── Header ── */}
         <div className="hp-header">
-          <Link href="/coordinador" className="hp-back">← Dashboard</Link>
+          <Link href="/admin" className="hp-back">← Dashboard</Link>
           <div>
             <p className="hp-eye">Registro de actividad</p>
             <h1 className="hp-title">Historial de <span>Cambios</span></h1>
