@@ -311,6 +311,7 @@ export default function HistorialPage() {
     a.click();
     URL.revokeObjectURL(url);
   }
+  
 
   // ─────────────────────────────────────────────
   // RENDER
