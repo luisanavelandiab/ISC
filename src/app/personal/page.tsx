@@ -58,7 +58,7 @@ interface Assignment {
 }
 
 const ROLE_CONFIG: Record<Role, { label: string; icon: string; color: string; bg: string; border: string }> = {
-  vigilante:  { label: "Vigilante",  icon: "🛡", color: "#C9A84C", bg: "rgba(201,168,76,.1)",  border: "rgba(201,168,76,.3)"  },
+  vigilante:  { label: "Agente",  icon: "🛡", color: "#C9A84C", bg: "rgba(201,168,76,.1)",  border: "rgba(201,168,76,.3)"  },
   descansero: { label: "Descansero", icon: "🔄", color: "#4DA3FF", bg: "rgba(77,163,255,.1)",  border: "rgba(77,163,255,.3)"  },
   supervisor: { label: "Supervisor", icon: "⭐", color: "#81C784", bg: "rgba(129,199,132,.1)", border: "rgba(129,199,132,.3)" },
 };
@@ -349,7 +349,7 @@ export default function PersonalPage() {
         <div className="role-tabs">
           {([
             ["todos","👥","Total activos",counts.todos],
-            ["vigilante","🛡","Vigilantes",counts.vigilante],
+            ["vigilante","🛡","Agentes",counts.vigilante],
             ["descansero","🔄","Descanseros",counts.descansero],
             ["supervisor","⭐","Supervisores",counts.supervisor],
           ] as const).map(([role,icon,label,count]) => (
