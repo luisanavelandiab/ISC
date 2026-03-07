@@ -58,6 +58,7 @@ interface Assignment {
   guardName: string;
   guardCategory?: string;
   guardAuthRole?: string;
+  guardRole?: string;
   date: Date;
   shift: "dia" | "noche" | "descanso";
   status: "borrador" | "publicado";
@@ -84,10 +85,12 @@ interface AlertDoc {
 
 // Devuelve clase CSS extra para el nombre dentro del pill
 function guardNameClass(a: Assignment): string {
-  const role = (a.guardAuthRole || "").toLowerCase();
-  const cat  = (a.guardCategory || "").toLowerCase();
+  const authRole = (a.guardAuthRole || "").toLowerCase();
+  const cat      = (a.guardCategory || "").toLowerCase();
+  const role     = (a.guardRole     || "").toLowerCase();
   if (a.shift === "descanso") return "gname-rest";
-  if (role === "supervisor" || cat === "supervisor") return "gname-supervisor";
+  if (authRole === "supervisor" || cat === "supervisor" || role === "supervisor") return "gname-supervisor";
+  if (role === "descansero") return "gname-descansero";
   return "";
 }
 
@@ -366,6 +369,7 @@ export default function DashboardPage() {
         guardName:     guard.name,
         guardCategory: guard.category  || "",
         guardAuthRole: guard.authRole  || "",
+        guardRole:     (guard as any).role || "",
         date:          Timestamp.fromDate(modal.date),
         shift:         selShift,
         status:        "borrador",
@@ -900,6 +904,10 @@ const CSS = `
   font-style: italic;
   text-decoration: line-through;
   text-decoration-color: rgba(155,155,155,.4);
+}
+.gname-descansero {
+  color: #4DA3FF;
+  font-weight: 600;
 }
 .pill-draft{font-size:7px;color:var(--gold);opacity:.8;animation:pulse 1.5s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.8}50%{opacity:.3}}
