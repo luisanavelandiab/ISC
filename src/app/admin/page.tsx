@@ -56,6 +56,8 @@ interface Assignment {
   unitName: string;
   guardId: string;
   guardName: string;
+  guardCategory?: string;
+  guardAuthRole?: string;
   date: Date;
   shift: "dia" | "noche" | "descanso";
   status: "borrador" | "publicado";
@@ -79,6 +81,16 @@ interface AlertDoc {
 // ─────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────
+
+// Devuelve clase CSS extra para el nombre dentro del pill
+function guardNameClass(a: Assignment): string {
+  const role = (a.guardAuthRole || "").toLowerCase();
+  const cat  = (a.guardCategory || "").toLowerCase();
+  if (a.shift === "descanso") return "gname-rest";
+  if (role === "supervisor" || cat === "supervisor") return "gname-supervisor";
+  return "";
+}
+
 function getMonday(d: Date) {
   const r = new Date(d);
   const day = r.getDay();
@@ -348,16 +360,18 @@ export default function DashboardPage() {
       console.log("Guardando asignación...", { guardId: selGuard, unitId: modal.unitId, shift: selShift });
 
       const assignmentRef = await addDoc(collection(db, "assignments"), {
-        unitId:     modal.unitId,
-        unitName:   modal.unitName,
-        guardId:    selGuard,
-        guardName:  guard.name,
-        date:       Timestamp.fromDate(modal.date),
-        shift:      selShift,
-        status:     "borrador",
-        createdBy:  "admin",
-        createdAt:  Timestamp.now(),
-        publishedAt: null,
+        unitId:        modal.unitId,
+        unitName:      modal.unitName,
+        guardId:       selGuard,
+        guardName:     guard.name,
+        guardCategory: guard.category  || "",
+        guardAuthRole: guard.authRole  || "",
+        date:          Timestamp.fromDate(modal.date),
+        shift:         selShift,
+        status:        "borrador",
+        createdBy:     "admin",
+        createdAt:     Timestamp.now(),
+        publishedAt:   null,
       });
       console.log("✓ Assignment guardado:", assignmentRef.id);
 
@@ -491,7 +505,7 @@ export default function DashboardPage() {
         {/* KPIs */}
         <div className="kpi-row">
           <div className="kpi"><div className="kpi-lbl">Unidades</div><div className="kpi-val">{units.length}</div></div>
-          <div className="kpi"><div className="kpi-lbl">Agentes</div><div className="kpi-val">{assignableGuards.length}</div></div>
+          <div className="kpi"><div className="kpi-lbl">Vigilantes</div><div className="kpi-val">{assignableGuards.length}</div></div>
           <div className="kpi">
             <div className="kpi-lbl">Cobertura</div>
             <div className="kpi-val" style={{ color: coveragePct>=90?"#81C784":coveragePct>=60?"var(--gold)":"#E57373" }}>{coveragePct}%</div>
@@ -612,7 +626,7 @@ export default function DashboardPage() {
                           <span className="shift-label shift-label-day">☀️ Día</span>
                           {dayAsgs.map(a => (
                             <div key={a.id} className="pill pill-day pill-inline">
-                              <span>{a.guardName}</span>
+                              <span className={guardNameClass(a)}>{a.guardName}</span>
                               {a.status==="borrador"&&<span className="pill-draft" title="Borrador">●</span>}
                               <button className="pill-del" title="Eliminar" onClick={e=>{e.stopPropagation();handleDelete(a.id);}}>✕</button>
                             </div>
@@ -626,7 +640,7 @@ export default function DashboardPage() {
                           <span className="shift-label shift-label-night">🌙 Noche</span>
                           {nightAsgs.map(a => (
                             <div key={a.id} className="pill pill-night pill-inline">
-                              <span>{a.guardName}</span>
+                              <span className={guardNameClass(a)}>{a.guardName}</span>
                               {a.status==="borrador"&&<span className="pill-draft" title="Borrador">●</span>}
                               <button className="pill-del" title="Eliminar" onClick={e=>{e.stopPropagation();handleDelete(a.id);}}>✕</button>
                             </div>
@@ -641,7 +655,7 @@ export default function DashboardPage() {
                             <span className="shift-label" style={{color:"#888"}}>💤 Descanso</span>
                             {restAsgs.map(a => (
                               <div key={a.id} className="pill pill-rest pill-inline">
-                                <span>{a.guardName}</span>
+                                <span className={guardNameClass(a)}>{a.guardName}</span>
                                 <button className="pill-del" onClick={e=>{e.stopPropagation();handleDelete(a.id);}}>✕</button>
                               </div>
                             ))}
@@ -696,7 +710,7 @@ export default function DashboardPage() {
           <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget){setModal(null);setValidationResult(null);}}}>
             <div className="modal">
               <div className="modal-handle"/>
-              <h3 className="modal-title">Asignar Agente</h3>
+              <h3 className="modal-title">Asignar Vigilante</h3>
 
               <div className="modal-info">
                 <span><strong>Unidad:</strong> {modal.unitName}</span>
@@ -712,7 +726,7 @@ export default function DashboardPage() {
                     <div className="modal-existing-list">
                       {existing.map(a => (
                         <div key={a.id} className={"pill "+(a.shift==="dia"?"pill-day":a.shift==="noche"?"pill-night":"pill-rest")}>
-                          {a.guardName} <em style={{opacity:.6}}>({a.shift}{a.status==="borrador"?" · borrador":""})</em>
+                          <span className={guardNameClass(a)}>{a.guardName}</span> <em style={{opacity:.6}}>({a.shift}{a.status==="borrador"?" · borrador":""})</em>
                         </div>
                       ))}
                     </div>
@@ -728,7 +742,7 @@ export default function DashboardPage() {
 
               {/* FIX: selector solo muestra vigilantes asignables */}
               <select value={selGuard} onChange={e=>setSelGuard(e.target.value)}>
-                <option value="">— Seleccionar agente —</option>
+                <option value="">— Seleccionar vigilante —</option>
                 {assignableGuards.map(g => (
                   <option key={g.id} value={g.id}>
                     {g.name}
@@ -771,14 +785,14 @@ export default function DashboardPage() {
                 </button>
                 <button className="btn-s" onClick={()=>{setModal(null);setValidationResult(null);}}>Cancelar</button>
               </div>
-              <p className="modal-note">💡 Se guarda como borrador. Usa Publicar para que los agentes lo vean.</p>
+              <p className="modal-note">💡 Se guarda como borrador. Usa Publicar para que los vigilantes lo vean.</p>
             </div>
           </div>
         )}
 
         {/* Toast */}
         {publishSuccess && (
-          <div className="toast-success">✓ Cambios publicados — los agentes ya pueden verlos</div>
+          <div className="toast-success">✓ Cambios publicados — los vigilantes ya pueden verlos</div>
         )}
       </div>
     </>
@@ -874,6 +888,19 @@ const CSS = `
 .pill-day  {background:rgba(201,168,76,.18);color:var(--gold)}
 .pill-night{background:rgba(30,144,255,.18); color:var(--blue)}
 .pill-rest {background:rgba(150,150,150,.15);color:#888}
+
+/* Colores de nombre según rol/categoría */
+.gname-supervisor {
+  color: #FFD700;
+  font-weight: 700;
+  letter-spacing: .3px;
+}
+.gname-rest {
+  color: #9B9B9B;
+  font-style: italic;
+  text-decoration: line-through;
+  text-decoration-color: rgba(155,155,155,.4);
+}
 .pill-draft{font-size:7px;color:var(--gold);opacity:.8;animation:pulse 1.5s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.8}50%{opacity:.3}}
 .pill-del{background:none;border:none;cursor:pointer;font-size:9px;opacity:.4;padding:0 1px;line-height:1;color:inherit;transition:opacity .15s;flex-shrink:0}
