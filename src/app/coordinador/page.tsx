@@ -159,7 +159,8 @@ export default function CoordinadorPage() {
           </div>
           <div className="cp-header-right">
             <nav className="cp-nav">
-<Link href="/coordinador/alertas" className="cp-nav-btn">                🔔 <span className="nav-lbl">Alertas</span>
+              <Link href="/coordinador/alertas" className="cp-nav-btn">               
+               🔔 <span className="nav-lbl">Alertas</span>
                 {alerts.length>0 && <span className="nav-badge">{alerts.length}</span>}
               </Link>
               <Link href="/coordinador/historial" className="cp-nav-btn">📋 <span className="nav-lbl">Historial</span></Link>
@@ -185,7 +186,7 @@ export default function CoordinadorPage() {
               {criticalAlerts.length} alerta{criticalAlerts.length!==1?"s":""} crítica{criticalAlerts.length!==1?"s":""} activa{criticalAlerts.length!==1?"s":""}:
               {" "}{criticalAlerts[0].message}
             </span>
-            <Link href="/alertas" className="critical-link">Ver alertas →</Link>
+            <Link href="/coordinador/alertas" className="critical-link">Ver alertas →</Link>
           </div>
         )}
 
@@ -234,8 +235,7 @@ export default function CoordinadorPage() {
                       {a.unitName && <span className="alert-mini-unit">📍 {a.unitName}</span>}
                     </div>
                   ))}
-                  {alerts.length>5 && <Link href="/alertas" className="alerts-more">Ver todas ({alerts.length}) →</Link>}
-                </div>
+{alerts.length>5 && <Link href="/coordinador/alertas" className="alerts-more">Ver todas ({alerts.length}) →</Link>}                </div>
             }
           </div>
         )}
