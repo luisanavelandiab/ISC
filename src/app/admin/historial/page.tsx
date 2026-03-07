@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   collection, onSnapshot, query, orderBy, where,
   doc, updateDoc, Timestamp, getDocs,
@@ -20,6 +20,7 @@ interface ChangeLog {
   action: ActionType;
   adminId: string;
   timestamp: Date;
+  notes?: string;
   // assign / delete
   assignmentId?: string;
   unitId?: string;
@@ -43,6 +44,7 @@ interface PublishLog {
   weekStart: Date;
   weekEnd: Date;
   affectedCount: number;
+  notes?: string;
 }
 
 const ACTION_CONFIG: Record<ActionType, { label: string; color: string; bg: string; icon: string }> = {
@@ -58,9 +60,6 @@ const SHIFT_LABEL: Record<string, string> = {
   descanso: "💤 Descanso",
 };
 
-function dateKey(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
 function fmtDate(d: Date) {
   return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
 }
@@ -86,6 +85,112 @@ function timeAgo(date: Date) {
   if (hours < 24) return `hace ${hours}h`;
   if (days < 30)  return `hace ${days}d`;
   return fmtDate(date);
+}
+
+// ─────────────────────────────────────────────
+// COMPONENTE: NotesEditor
+// ─────────────────────────────────────────────
+function NotesEditor({
+  logId,
+  initialNote,
+  onSaved,
+}: {
+  logId: string;
+  initialNote?: string;
+  onSaved?: (note: string) => void;
+}) {
+  const [editing, setEditing]   = useState(false);
+  const [text,    setText]      = useState(initialNote || "");
+  const [saving,  setSaving]    = useState(false);
+  const [saved,   setSaved]     = useState(false);
+  const textareaRef             = useRef<HTMLTextAreaElement>(null);
+
+  // Sync if prop changes (e.g. live Firestore update)
+  useEffect(() => { setText(initialNote || ""); }, [initialNote]);
+
+  function handleEdit(e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditing(true);
+    setSaved(false);
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  }
+
+  async function handleSave(e: React.MouseEvent) {
+    e.stopPropagation();
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "changeLog", logId), { notes: text.trim() });
+      setSaved(true);
+      setEditing(false);
+      onSaved?.(text.trim());
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      console.error("Error guardando nota:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancel(e: React.MouseEvent) {
+    e.stopPropagation();
+    setText(initialNote || "");
+    setEditing(false);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Escape") { setText(initialNote || ""); setEditing(false); }
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") handleSave(e as any);
+  }
+
+  const hasNote = !!(text.trim());
+
+  if (!editing) {
+    return (
+      <div className="notes-display" onClick={(e) => e.stopPropagation()}>
+        {hasNote ? (
+          <div className="notes-bubble">
+            <span className="notes-dot notes-dot-filled" />
+            <span className="notes-text">{text}</span>
+            <button className="notes-edit-btn" onClick={handleEdit} title="Editar observación">
+              ✎
+            </button>
+          </div>
+        ) : (
+          <button className="notes-add-btn" onClick={handleEdit} title="Agregar observación">
+            <span className="notes-dot" />
+            <span>+ Observación</span>
+          </button>
+        )}
+        {saved && <span className="notes-saved-flash">✓ Guardado</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="notes-editor" onClick={(e) => e.stopPropagation()}>
+      <textarea
+        ref={textareaRef}
+        className="notes-textarea"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Escribe una observación sobre este registro…"
+        rows={3}
+        maxLength={500}
+      />
+      <div className="notes-actions">
+        <span className="notes-hint">Ctrl+Enter para guardar · Esc para cancelar</span>
+        <div className="notes-btns">
+          <button className="notes-btn-cancel" onClick={handleCancel} disabled={saving}>
+            Cancelar
+          </button>
+          <button className="notes-btn-save" onClick={handleSave} disabled={saving}>
+            {saving ? <span className="notes-spinner" /> : "✓ Guardar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────
@@ -149,21 +254,20 @@ export default function HistorialPage() {
     });
   }, [logs, filterAction, filterUnit, filterGuard, dateFrom, dateTo]);
 
-  const changeLogs    = filteredLogs.filter((l) => l.action === "assign" || l.action === "delete");
-  const publishLogs   = filteredLogs.filter((l) => l.action === "publish" || l.action === "unpublish") as unknown as PublishLog[];
+  const changeLogs  = filteredLogs.filter((l) => l.action === "assign" || l.action === "delete");
+  const publishLogs = filteredLogs.filter((l) => l.action === "publish" || l.action === "unpublish") as unknown as PublishLog[];
 
   // KPIs
-  const totalAssigns  = logs.filter((l) => l.action === "assign").length;
-  const totalDeletes  = logs.filter((l) => l.action === "delete").length;
-  const totalPublish  = logs.filter((l) => l.action === "publish").length;
-  const lastPublish   = logs.find((l) => l.action === "publish");
+  const totalAssigns = logs.filter((l) => l.action === "assign").length;
+  const totalDeletes = logs.filter((l) => l.action === "delete").length;
+  const totalPublish = logs.filter((l) => l.action === "publish").length;
+  const lastPublish  = logs.find((l) => l.action === "publish");
 
   // ── Despublicar ──
   async function handleUnpublish(log: PublishLog) {
     if (!log.weekStart || !log.weekEnd) return;
     setUnpublishing(log.id);
     try {
-      // Buscar asignaciones publicadas de esa semana
       const q = query(
         collection(db, "assignments"),
         where("status", "==", "publicado")
@@ -186,7 +290,7 @@ export default function HistorialPage() {
   // ── Exportar CSV ──
   function exportCSV() {
     const rows = [
-      ["Acción", "Unidad", "Vigilante", "Turno", "Fecha Turno", "Registrado", "Admin"],
+      ["Acción", "Unidad", "Vigilante", "Turno", "Fecha Turno", "Registrado", "Admin", "Observación"],
       ...changeLogs.map((l) => [
         ACTION_CONFIG[l.action]?.label || l.action,
         l.unitName  || "",
@@ -195,6 +299,7 @@ export default function HistorialPage() {
         l.date ? fmtDate(l.date) : "",
         fmtDateTime(l.timestamp),
         l.adminId || "admin",
+        l.notes || "",
       ]),
     ];
     const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
@@ -288,7 +393,6 @@ export default function HistorialPage() {
             {/* ── Filtros ── */}
             <div className="filter-panel">
               <div className="filter-row">
-                {/* Acción */}
                 <div className="filter-group">
                   <span className="filter-lbl">Acción</span>
                   <div className="filter-chips">
@@ -309,68 +413,34 @@ export default function HistorialPage() {
                   </div>
                 </div>
 
-                {/* Unidad */}
                 <div className="filter-group">
                   <span className="filter-lbl">Unidad</span>
-                  <select
-                    className="filter-select"
-                    value={filterUnit}
-                    onChange={(e) => setFilterUnit(e.target.value)}
-                  >
+                  <select className="filter-select" value={filterUnit} onChange={(e) => setFilterUnit(e.target.value)}>
                     <option value="todas">Todas</option>
-                    {units.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
+                    {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>
 
-                {/* Vigilante */}
                 <div className="filter-group">
                   <span className="filter-lbl">Vigilante</span>
-                  <select
-                    className="filter-select"
-                    value={filterGuard}
-                    onChange={(e) => setFilterGuard(e.target.value)}
-                  >
+                  <select className="filter-select" value={filterGuard} onChange={(e) => setFilterGuard(e.target.value)}>
                     <option value="todas">Todos</option>
-                    {guards.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
+                    {guards.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
                 </div>
               </div>
 
-              {/* Rango de fechas */}
               <div className="filter-row">
                 <div className="filter-group">
                   <span className="filter-lbl">Desde</span>
-                  <input
-                    type="date"
-                    className="filter-date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                  />
+                  <input type="date" className="filter-date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
                 </div>
                 <div className="filter-group">
                   <span className="filter-lbl">Hasta</span>
-                  <input
-                    type="date"
-                    className="filter-date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                  />
+                  <input type="date" className="filter-date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
                 </div>
                 {(filterAction !== "todas" || filterUnit !== "todas" || filterGuard !== "todas" || dateFrom || dateTo) && (
-                  <button
-                    className="btn-clear"
-                    onClick={() => {
-                      setFilterAction("todas");
-                      setFilterUnit("todas");
-                      setFilterGuard("todas");
-                      setDateFrom("");
-                      setDateTo("");
-                    }}
-                  >
+                  <button className="btn-clear" onClick={() => { setFilterAction("todas"); setFilterUnit("todas"); setFilterGuard("todas"); setDateFrom(""); setDateTo(""); }}>
                     ✕ Limpiar filtros
                   </button>
                 )}
@@ -382,6 +452,9 @@ export default function HistorialPage() {
               <span className="result-count">
                 {changeLogs.length} registro{changeLogs.length !== 1 ? "s" : ""}
                 {filteredLogs.length !== logs.length && " (filtrados)"}
+              </span>
+              <span className="result-hint">
+                💬 Haz clic en una fila para ver detalles y agregar observaciones
               </span>
             </div>
 
@@ -410,7 +483,8 @@ export default function HistorialPage() {
                         <th>Turno</th>
                         <th>Fecha del turno</th>
                         <th>Registrado</th>
-                        <th>Estado</th>
+                        <th>Admin</th>
+                        <th>Observación</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -425,72 +499,58 @@ export default function HistorialPage() {
                               onClick={() => setExpandedId(isExp ? null : log.id)}
                             >
                               <td>
-                                <span
-                                  className="action-badge"
-                                  style={{ color: cfg.color, borderColor: cfg.color, background: cfg.bg }}
-                                >
+                                <span className="action-badge" style={{ color: cfg.color, borderColor: cfg.color, background: cfg.bg }}>
                                   <span className="action-icon">{cfg.icon}</span>
                                   {cfg.label}
                                 </span>
                               </td>
-                              <td className="tbl-unit">
-                                {log.unitName || <span className="tbl-dim">—</span>}
-                              </td>
-                              <td className="tbl-guard">
-                                {log.guardName || <span className="tbl-dim">—</span>}
-                              </td>
+                              <td className="tbl-unit">{log.unitName || <span className="tbl-dim">—</span>}</td>
+                              <td className="tbl-guard">{log.guardName || <span className="tbl-dim">—</span>}</td>
                               <td>
                                 {log.shift ? (
-                                  <span className={"shift-badge shift-" + log.shift}>
-                                    {SHIFT_LABEL[log.shift]}
-                                  </span>
+                                  <span className={"shift-badge shift-" + log.shift}>{SHIFT_LABEL[log.shift]}</span>
                                 ) : <span className="tbl-dim">—</span>}
                               </td>
-                              <td className="tbl-dim">
-                                {log.date ? fmtDate(log.date) : "—"}
-                              </td>
+                              <td className="tbl-dim">{log.date ? fmtDate(log.date) : "—"}</td>
                               <td className="tbl-time">
                                 <span className="tbl-time-ago">{timeAgo(log.timestamp)}</span>
                                 <span className="tbl-time-full">{fmtDateTime(log.timestamp)}</span>
                               </td>
-                              <td>
-                                <span className="tbl-admin">{log.adminId || "admin"}</span>
+                              <td><span className="tbl-admin">{log.adminId || "admin"}</span></td>
+                              {/* ── Columna Observación (inline, no expande fila) ── */}
+                              <td className="tbl-notes-cell">
+                                <NotesEditor logId={log.id} initialNote={log.notes} />
                               </td>
                               <td>
-                                <button className="btn-row-expand">
-                                  {isExp ? "▲" : "▼"}
-                                </button>
+                                <button className="btn-row-expand">{isExp ? "▲" : "▼"}</button>
                               </td>
                             </tr>
                             {isExp && (
                               <tr className="tbl-detail-row">
-                                <td colSpan={8}>
+                                <td colSpan={9}>
                                   <div className="tbl-detail">
                                     <div className="detail-grid">
                                       <div className="detail-item">
                                         <span className="detail-lbl">ID asignación</span>
-                                        <span className="detail-val detail-mono">
-                                          {log.assignmentId || "—"}
-                                        </span>
+                                        <span className="detail-val detail-mono">{log.assignmentId || "—"}</span>
                                       </div>
                                       <div className="detail-item">
                                         <span className="detail-lbl">Fecha exacta</span>
-                                        <span className="detail-val">
-                                          {fmtDateTime(log.timestamp)}
-                                        </span>
+                                        <span className="detail-val">{fmtDateTime(log.timestamp)}</span>
                                       </div>
                                       <div className="detail-item">
                                         <span className="detail-lbl">Unidad ID</span>
-                                        <span className="detail-val detail-mono">
-                                          {log.unitId || "—"}
-                                        </span>
+                                        <span className="detail-val detail-mono">{log.unitId || "—"}</span>
                                       </div>
                                       <div className="detail-item">
                                         <span className="detail-lbl">Vigilante ID</span>
-                                        <span className="detail-val detail-mono">
-                                          {log.guardId || "—"}
-                                        </span>
+                                        <span className="detail-val detail-mono">{log.guardId || "—"}</span>
                                       </div>
+                                    </div>
+                                    {/* ── Sección observación expandida ── */}
+                                    <div className="detail-notes-section">
+                                      <span className="detail-lbl">💬 Observación del registro</span>
+                                      <NotesEditor logId={log.id} initialNote={log.notes} />
                                     </div>
                                   </div>
                                 </td>
@@ -508,16 +568,9 @@ export default function HistorialPage() {
                   {changeLogs.map((log) => {
                     const cfg = ACTION_CONFIG[log.action];
                     return (
-                      <div
-                        key={log.id}
-                        className="mobile-card"
-                        style={{ borderLeftColor: cfg.color }}
-                      >
+                      <div key={log.id} className="mobile-card" style={{ borderLeftColor: cfg.color }}>
                         <div className="mc-top">
-                          <span
-                            className="action-badge"
-                            style={{ color: cfg.color, borderColor: cfg.color, background: cfg.bg }}
-                          >
+                          <span className="action-badge" style={{ color: cfg.color, borderColor: cfg.color, background: cfg.bg }}>
                             <span className="action-icon">{cfg.icon}</span>
                             {cfg.label}
                           </span>
@@ -539,9 +592,7 @@ export default function HistorialPage() {
                           {log.shift && (
                             <div className="mc-row">
                               <span className="mc-lbl">🕐</span>
-                              <span className={"mc-val shift-badge shift-" + log.shift}>
-                                {SHIFT_LABEL[log.shift]}
-                              </span>
+                              <span className={"mc-val shift-badge shift-" + log.shift}>{SHIFT_LABEL[log.shift]}</span>
                             </div>
                           )}
                           {log.date && (
@@ -550,6 +601,10 @@ export default function HistorialPage() {
                               <span className="mc-val">{fmtDate(log.date)}</span>
                             </div>
                           )}
+                        </div>
+                        {/* ── Observación en card móvil ── */}
+                        <div className="mc-notes">
+                          <NotesEditor logId={log.id} initialNote={log.notes} />
                         </div>
                       </div>
                     );
@@ -584,56 +639,43 @@ export default function HistorialPage() {
                   const cfg = ACTION_CONFIG[log.action];
                   const isUnpub = log.action === "unpublish";
                   return (
-                    <div
-                      key={log.id}
-                      className={"pub-card" + (isUnpub ? " pub-card-unpub" : "")}
-                      style={{ borderLeftColor: cfg.color }}
-                    >
-                      <div className="pub-left">
-                        <div className="pub-icon" style={{ color: cfg.color, background: cfg.bg }}>
-                          {cfg.icon}
-                        </div>
-                        <div className="pub-info">
-                          <div className="pub-title-row">
-                            <span className="pub-title">
-                              {isUnpub ? "Semana despublicada" : "Semana publicada"}
-                            </span>
-                            <span className="pub-week">
-                              📅 {log.weekStart && log.weekEnd
-                                ? fmtWeek(log.weekStart, log.weekEnd)
-                                : "—"}
-                            </span>
-                          </div>
-                          <div className="pub-meta">
-                            <span className="pub-count">
-                              {log.affectedCount} asignaci{log.affectedCount !== 1 ? "ones" : "ón"}
-                            </span>
-                            <span className="pub-sep">·</span>
-                            <span className="pub-time">{fmtDateTime(log.timestamp)}</span>
-                            <span className="pub-sep">·</span>
-                            <span className="pub-admin">Admin: {log.adminId || "admin"}</span>
+                    <div key={log.id} className={"pub-card" + (isUnpub ? " pub-card-unpub" : "")} style={{ borderLeftColor: cfg.color }}>
+                      <div className="pub-main">
+                        <div className="pub-left">
+                          <div className="pub-icon" style={{ color: cfg.color, background: cfg.bg }}>{cfg.icon}</div>
+                          <div className="pub-info">
+                            <div className="pub-title-row">
+                              <span className="pub-title">{isUnpub ? "Semana despublicada" : "Semana publicada"}</span>
+                              <span className="pub-week">📅 {log.weekStart && log.weekEnd ? fmtWeek(log.weekStart, log.weekEnd) : "—"}</span>
+                            </div>
+                            <div className="pub-meta">
+                              <span className="pub-count">{log.affectedCount} asignaci{log.affectedCount !== 1 ? "ones" : "ón"}</span>
+                              <span className="pub-sep">·</span>
+                              <span className="pub-time">{fmtDateTime(log.timestamp)}</span>
+                              <span className="pub-sep">·</span>
+                              <span className="pub-admin">Admin: {log.adminId || "admin"}</span>
+                            </div>
                           </div>
                         </div>
+
+                        {!isUnpub ? (
+                          <button
+                            className="btn-unpublish"
+                            onClick={() => handleUnpublish(log)}
+                            disabled={unpublishing === log.id}
+                            title="Regresa estas asignaciones a borrador"
+                          >
+                            {unpublishing === log.id ? <span className="pub-spinner" /> : "↓ Despublicar"}
+                          </button>
+                        ) : (
+                          <span className="pub-reverted-badge">Revertido</span>
+                        )}
                       </div>
 
-                      {/* Solo permitir despublicar si fue una publicación */}
-                      {!isUnpub && (
-                        <button
-                          className="btn-unpublish"
-                          onClick={() => handleUnpublish(log)}
-                          disabled={unpublishing === log.id}
-                          title="Regresa estas asignaciones a borrador"
-                        >
-                          {unpublishing === log.id ? (
-                            <span className="pub-spinner" />
-                          ) : (
-                            "↓ Despublicar"
-                          )}
-                        </button>
-                      )}
-                      {isUnpub && (
-                        <span className="pub-reverted-badge">Revertido</span>
-                      )}
+                      {/* ── Observación en pub-card ── */}
+                      <div className="pub-notes">
+                        <NotesEditor logId={log.id} initialNote={log.notes} />
+                      </div>
                     </div>
                   );
                 })}
@@ -773,14 +815,15 @@ const CSS = `
 
 /* Result bar */
 .result-bar {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;
   padding: 0 2px;
 }
 .result-count { font-size: 10px; color: var(--dim); letter-spacing: .5px; }
+.result-hint  { font-size: 9px; color: rgba(201,168,76,.4); letter-spacing: .3px; }
 
 /* Table */
 .tbl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); background: var(--card); }
-.hist-table { width: 100%; border-collapse: collapse; min-width: 700px; }
+.hist-table { width: 100%; border-collapse: collapse; min-width: 820px; }
 .hist-table thead th {
   background: rgba(201,168,76,.08); padding: 11px 12px;
   text-align: left; font-size: 8px; font-weight: 700; letter-spacing: 1.5px;
@@ -795,12 +838,22 @@ const CSS = `
 .hist-table tbody .tbl-row:hover td { background: rgba(201,168,76,.03); }
 .tbl-row-expanded td { background: rgba(201,168,76,.04) !important; }
 .tbl-detail-row td { padding: 0; border-bottom: 1px solid rgba(255,255,255,.06); }
-.tbl-detail { padding: 14px 16px; background: rgba(0,0,0,.2); }
+.tbl-detail { padding: 14px 16px 18px; background: rgba(0,0,0,.2); display: flex; flex-direction: column; gap: 14px; }
 .detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 12px; }
 .detail-item { display: flex; flex-direction: column; gap: 3px; }
 .detail-lbl { font-size: 8px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); }
 .detail-val { font-size: 11px; color: var(--white); }
 .detail-mono { font-family: monospace; font-size: 10px; color: var(--dim); word-break: break-all; }
+
+/* Notes section inside expanded row */
+.detail-notes-section {
+  border-top: 1px solid rgba(201,168,76,.1);
+  padding-top: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+/* Table notes cell */
+.tbl-notes-cell { max-width: 220px; min-width: 140px; cursor: default !important; }
 
 /* Table cells */
 .tbl-unit  { font-weight: 500; color: var(--white); }
@@ -827,6 +880,100 @@ const CSS = `
 .shift-noche   { color: var(--blue); }
 .shift-descanso{ color: #888; }
 
+/* ── NOTES EDITOR ── */
+.notes-display {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.notes-bubble {
+  display: flex; align-items: flex-start; gap: 5px;
+  background: rgba(201,168,76,.06); border: 1px solid rgba(201,168,76,.15);
+  padding: 4px 8px; border-radius: 2px; max-width: 100%;
+}
+.notes-text {
+  font-size: 10px; color: rgba(245,240,232,.75); line-height: 1.4;
+  white-space: pre-wrap; word-break: break-word; flex: 1;
+}
+.notes-edit-btn {
+  background: none; border: none; color: var(--dim); font-size: 11px;
+  cursor: pointer; padding: 0 2px; line-height: 1; flex-shrink: 0;
+  transition: color .15s; margin-top: 1px;
+}
+.notes-edit-btn:hover { color: var(--gold); }
+.notes-add-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: 1px dashed rgba(255,255,255,.1);
+  color: rgba(245,240,232,.3); font-family: 'Montserrat',sans-serif;
+  font-size: 9px; font-weight: 500; letter-spacing: .5px; padding: 3px 8px;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.notes-add-btn:hover {
+  border-color: rgba(201,168,76,.3); color: rgba(201,168,76,.6);
+}
+.notes-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: rgba(255,255,255,.15); flex-shrink: 0; display: inline-block;
+}
+.notes-dot-filled { background: var(--gold); }
+.notes-saved-flash {
+  font-size: 9px; color: var(--green); font-weight: 600; letter-spacing: .5px;
+  animation: fadeIn .2s ease;
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
+
+.notes-editor {
+  display: flex; flex-direction: column; gap: 6px; width: 100%;
+}
+.notes-textarea {
+  width: 100%; background: rgba(0,0,0,.4); border: 1px solid rgba(201,168,76,.3);
+  color: var(--white); font-family: 'Montserrat',sans-serif; font-size: 10px;
+  line-height: 1.5; padding: 7px 9px; outline: none; resize: vertical;
+  min-height: 60px; transition: border-color .15s;
+}
+.notes-textarea:focus { border-color: var(--gold); }
+.notes-textarea::placeholder { color: rgba(245,240,232,.25); }
+.notes-actions {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;
+}
+.notes-hint { font-size: 8px; color: rgba(245,240,232,.2); letter-spacing: .3px; }
+.notes-btns { display: flex; gap: 4px; }
+.notes-btn-cancel {
+  padding: 4px 10px; background: transparent;
+  border: 1px solid rgba(255,255,255,.12); color: var(--dim);
+  font-family: 'Montserrat',sans-serif; font-size: 9px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.notes-btn-cancel:hover:not(:disabled) { border-color: rgba(255,255,255,.25); color: var(--white); }
+.notes-btn-cancel:disabled { opacity: .4; cursor: not-allowed; }
+.notes-btn-save {
+  padding: 4px 12px; background: rgba(201,168,76,.12);
+  border: 1px solid var(--gold); color: var(--gold);
+  font-family: 'Montserrat',sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .5px;
+  cursor: pointer; transition: background .15s; display: flex; align-items: center; gap: 4px;
+  clip-path: polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%);
+}
+.notes-btn-save:hover:not(:disabled) { background: rgba(201,168,76,.22); }
+.notes-btn-save:disabled { opacity: .4; cursor: not-allowed; }
+.notes-spinner {
+  width: 10px; height: 10px; border: 1.5px solid rgba(201,168,76,.3);
+  border-top-color: var(--gold); border-radius: 50%;
+  animation: spin .6s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Mobile notes */
+.mc-notes {
+  border-top: 1px solid rgba(255,255,255,.05);
+  padding-top: 10px; margin-top: 6px;
+}
+
+/* Publish card notes */
+.pub-card { flex-direction: column; }
+.pub-main { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; width: 100%; }
+.pub-notes {
+  border-top: 1px solid rgba(255,255,255,.05);
+  padding-top: 10px; margin-top: 4px; width: 100%;
+}
+
 /* Mobile cards */
 .mobile-list { display: flex; flex-direction: column; gap: 8px; }
 .mobile-card {
@@ -846,7 +993,6 @@ const CSS = `
 /* Loading */
 .loading-state { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 60px; color: var(--dim); font-size: 11px; }
 .loading-spinner { width: 18px; height: 18px; border: 2px solid rgba(201,168,76,.2); border-top-color: var(--gold); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
-@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Empty */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 10px; }
@@ -861,8 +1007,7 @@ const CSS = `
   border-top: 1px solid rgba(255,255,255,.05);
   border-right: 1px solid rgba(255,255,255,.05);
   border-bottom: 1px solid rgba(255,255,255,.05);
-  padding: 14px 16px; display: flex; align-items: center;
-  justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 14px 16px;
 }
 .pub-card-unpub { opacity: .6; }
 .pub-left { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
@@ -878,8 +1023,6 @@ const CSS = `
 .pub-meta  { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 10px; color: var(--dim); }
 .pub-count { color: var(--gold); font-weight: 600; }
 .pub-sep   { opacity: .4; }
-.pub-time  { }
-.pub-admin { }
 .btn-unpublish {
   padding: 8px 14px; background: transparent;
   border: 1px solid rgba(77,163,255,.3); color: var(--blue);
