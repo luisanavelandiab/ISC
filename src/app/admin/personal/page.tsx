@@ -58,7 +58,7 @@ interface Assignment {
 }
 
 const ROLE_CONFIG: Record<Role, { label: string; icon: string; color: string; bg: string; border: string }> = {
-  vigilante:  { label: "Vigilante",  icon: "🛡", color: "#C9A84C", bg: "rgba(201,168,76,.1)",  border: "rgba(201,168,76,.3)"  },
+  vigilante:  { label: "Agente",  icon: "🛡", color: "#C9A84C", bg: "rgba(201,168,76,.1)",  border: "rgba(201,168,76,.3)"  },
   descansero: { label: "Descansero", icon: "🔄", color: "#4DA3FF", bg: "rgba(77,163,255,.1)",  border: "rgba(77,163,255,.3)"  },
   supervisor: { label: "Supervisor", icon: "⭐", color: "#81C784", bg: "rgba(129,199,132,.1)", border: "rgba(129,199,132,.3)" },
 };
@@ -293,95 +293,114 @@ export default function PersonalPage() {
     if (modal === "view") setSelected((prev) => prev ? { ...prev, status: next } : null);
   }
 
-  async function exportXLSX() {
-    const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs" as any);
-    const wb = XLSX.utils.book_new();
+  function exportXLSX() {
+    // Cargar SheetJS desde CDN via script tag
+    const doExport = (XLSX: any) => {
+      const wb = XLSX.utils.book_new();
 
-    const fmtDate = (v: any) => {
-      if (!v) return "";
-      const d = v instanceof Date ? v : new Date(v);
-      return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString("es-PE");
-    };
+      const fmtDate = (v: any) => {
+        if (!v) return "";
+        if (typeof v === "string" && v.length === 10 && v.includes("-")) {
+          const [y,m,d] = v.split("-");
+          return `${d}/${m}/${y}`;
+        }
+        const dt = v instanceof Date ? v : new Date(v);
+        return isNaN(dt.getTime()) ? String(v) : dt.toLocaleDateString("es-PE");
+      };
 
-    const activos = filtered.filter(p => p.status === "activo" || p.status === "reingreso");
-    const cesados = filtered.filter(p => p.status === "inactivo" || p.status === "suspendido");
+      const activos = filtered.filter(p => p.status === "activo" || p.status === "reingreso");
+      const cesados = filtered.filter(p => p.status === "inactivo" || p.status === "suspendido");
 
-    const HEADERS = [
-      "N°","ACT/CES","PLANILLA","FECHA DE INGRESO","RAZON SOCIAL","F DE PAGO",
-      "APELLIDOS Y NOMBRES","TIPO DE DOC","N° DOC.","F. NACIMIENTO","EDAD",
-      "NUMERO TELEFONICO","CORREO ELECTRONICO","DIRECCION",
-      "NUMERO DE CUENTA","BANCO","CATEGORIA","ROL","ESTADO",
-    ];
-    const COL_WIDTHS = [5,12,12,16,22,20,40,12,16,14,7,22,36,40,22,14,14,14,12];
+      const HEADERS = [
+        "N°","ACT/CES","PLANILLA","FECHA DE INGRESO","RAZON SOCIAL","F DE PAGO",
+        "APELLIDOS Y NOMBRES","TIPO DE DOC","N° DOC.","F. NACIMIENTO","EDAD",
+        "NUMERO TELEFONICO","CORREO ELECTRONICO","DIRECCION",
+        "NUMERO DE CUENTA","BANCO","CATEGORIA","ROL","ESTADO",
+      ];
+      const COL_WIDTHS = [5,12,12,16,22,20,40,12,16,14,7,22,36,40,22,14,14,14,12];
 
-    const buildRows = (list: typeof filtered) =>
-      list.map((p, i) => [
-        i + 1,
-        (p.status === "activo" || p.status === "reingreso") ? "ACTIVO" : "CESADO",
-        p.enPlanilla ? "SI" : "NO",
-        fmtDate(p.startDate),
-        (p.razonSocial || "").toUpperCase(),
-        (p.formaPago   || "").toUpperCase(),
-        (p.fullName    || "").toUpperCase(),
-        (p.docType     || "DNI").toUpperCase(),
-        p.docNumber    ?? (p as any).cedula ?? "",
-        fmtDate(p.birthDate),
-        p.age != null ? p.age : "",
-        p.phone        || "",
-        p.email        || "",
-        p.address      || "",
-        p.bankAccount  || "",
-        (p.bank        || "").toUpperCase(),
-        (p.category    || "").toUpperCase(),
-        ROLE_CONFIG[p.role]?.label ?? p.role ?? "",
-        STATUS_CONFIG[p.status]?.label ?? p.status ?? "",
-      ]);
+      const buildRows = (list: typeof filtered) =>
+        list.map((p, i) => [
+          i + 1,
+          (p.status === "activo" || p.status === "reingreso") ? "ACTIVO" : "CESADO",
+          p.enPlanilla ? "SI" : "NO",
+          fmtDate(p.startDate),
+          (p.razonSocial || "").toUpperCase(),
+          (p.formaPago   || "").toUpperCase(),
+          (p.fullName    || "").toUpperCase(),
+          (p.docType     || "DNI").toUpperCase(),
+          String(p.docNumber ?? (p as any).cedula ?? ""),
+          fmtDate(p.birthDate),
+          p.age != null ? p.age : "",
+          p.phone       || "",
+          p.email       || "",
+          p.address     || "",
+          p.bankAccount || "",
+          (p.bank       || "").toUpperCase(),
+          (p.category   || "").toUpperCase(),
+          ROLE_CONFIG[p.role]?.label ?? p.role ?? "",
+          STATUS_CONFIG[p.status]?.label ?? p.status ?? "",
+        ]);
 
-    const addSheet = (name: string, list: typeof filtered) => {
-      const data = [HEADERS, ...buildRows(list)];
-      const ws: any = XLSX.utils.aoa_to_sheet(data);
-      ws["!cols"] = COL_WIDTHS.map(w => ({ wch: w }));
-      ws["!rows"] = data.map((_: any, i: number) => ({ hpt: i === 0 ? 32 : 20 }));
-
-      // Header row style
-      HEADERS.forEach((_: any, ci: number) => {
-        const addr = XLSX.utils.encode_cell({ r: 0, c: ci });
-        if (!ws[addr]) return;
-        ws[addr].s = {
-          font:      { bold: true, name: "Arial", sz: 10, color: { rgb: "FFFFFF" } },
-          fill:      { patternType: "solid", fgColor: { rgb: "1F3864" } },
-          alignment: { horizontal: "center", vertical: "center", wrapText: true },
-          border:    { top:{style:"thin",color:{rgb:"888888"}}, bottom:{style:"thin",color:{rgb:"888888"}}, left:{style:"thin",color:{rgb:"888888"}}, right:{style:"thin",color:{rgb:"888888"}} },
-        };
+      const hStyle = {
+        font:      { bold: true, name: "Arial", sz: 10, color: { rgb: "FFFFFF" } },
+        fill:      { patternType: "solid", fgColor: { rgb: "1F3864" } },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+        border:    { top:{style:"thin",color:{rgb:"888888"}}, bottom:{style:"thin",color:{rgb:"888888"}}, left:{style:"thin",color:{rgb:"888888"}}, right:{style:"thin",color:{rgb:"888888"}} },
+      };
+      const dStyle = (bg: string, bold = false) => ({
+        font:      { name: "Arial", sz: 9, bold },
+        fill:      { patternType: "solid", fgColor: { rgb: bg } },
+        alignment: { vertical: "center" },
+        border:    { top:{style:"thin",color:{rgb:"CCCCCC"}}, bottom:{style:"thin",color:{rgb:"CCCCCC"}}, left:{style:"thin",color:{rgb:"CCCCCC"}}, right:{style:"thin",color:{rgb:"CCCCCC"}} },
       });
 
-      // Data rows style
-      buildRows(list).forEach((row: any[], ri: number) => {
-        const isActivo = row[1] === "ACTIVO";
-        const bg = isActivo
-          ? (ri % 2 === 0 ? "FFFF00" : "FFFACD")
-          : (ri % 2 === 0 ? "FFDADA" : "FFCCCC");
-        row.forEach((_: any, ci: number) => {
-          const addr = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
-          if (!ws[addr]) ws[addr] = { t: "z", v: "" };
-          ws[addr].s = {
-            font:      { name: "Arial", sz: 9, bold: ci === 6 },
-            fill:      { patternType: "solid", fgColor: { rgb: bg } },
-            alignment: { vertical: "center" },
-            border:    { top:{style:"thin",color:{rgb:"CCCCCC"}}, bottom:{style:"thin",color:{rgb:"CCCCCC"}}, left:{style:"thin",color:{rgb:"CCCCCC"}}, right:{style:"thin",color:{rgb:"CCCCCC"}} },
-          };
+      const addSheet = (name: string, list: typeof filtered) => {
+        const rows = buildRows(list);
+        const data = [HEADERS, ...rows];
+        const ws: any = XLSX.utils.aoa_to_sheet(data);
+        ws["!cols"] = COL_WIDTHS.map((w: number) => ({ wch: w }));
+        ws["!rows"] = data.map((_: any, i: number) => ({ hpt: i === 0 ? 32 : 20 }));
+
+        HEADERS.forEach((_: any, ci: number) => {
+          const addr = XLSX.utils.encode_cell({ r: 0, c: ci });
+          if (!ws[addr]) ws[addr] = { t: "s", v: HEADERS[ci] };
+          ws[addr].s = hStyle;
         });
-      });
 
-      XLSX.utils.book_append_sheet(wb, ws, name);
+        rows.forEach((row: any[], ri: number) => {
+          const isActivo = row[1] === "ACTIVO";
+          const bg = isActivo
+            ? (ri % 2 === 0 ? "FFFF00" : "FFFACD")
+            : (ri % 2 === 0 ? "FFDADA" : "FFCCCC");
+          row.forEach((_: any, ci: number) => {
+            const addr = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
+            if (!ws[addr]) ws[addr] = { t: "z", v: "" };
+            ws[addr].s = dStyle(bg, ci === 6);
+          });
+        });
+
+        XLSX.utils.book_append_sheet(wb, ws, name);
+      };
+
+      addSheet("ACTIVOS", activos);
+      if (cesados.length > 0) addSheet("CESADOS", cesados);
+      addSheet("TODOS", filtered);
+
+      XLSX.writeFile(wb, `personal_${new Date().toISOString().slice(0,10)}.xlsx`, { bookType: "xlsx", cellStyles: true });
     };
 
-    addSheet("ACTIVOS", activos);
-    if (cesados.length > 0) addSheet("CESADOS", cesados);
-    addSheet("TODOS", filtered);
+    // Si ya está cargado, usar directo
+    if ((window as any).XLSX) { doExport((window as any).XLSX); return; }
 
-    XLSX.writeFile(wb, `personal_${new Date().toISOString().slice(0,10)}.xlsx`, { bookType: "xlsx", cellStyles: true });
+    // Cargar desde CDN
+    const script = document.createElement("script");
+    script.src = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
+    script.onload = () => doExport((window as any).XLSX);
+    script.onerror = () => alert("No se pudo cargar la librería de Excel. Verifica tu conexión.");
+    document.head.appendChild(script);
   }
+
 
 
   function setField(key: string, value: any) {
@@ -418,7 +437,7 @@ export default function PersonalPage() {
         <div className="role-tabs">
           {([
             ["todos","👥","Total activos",counts.todos],
-            ["vigilante","🛡","Vigilantes",counts.vigilante],
+            ["vigilante","🛡","Agentes",counts.vigilante],
             ["descansero","🔄","Descanseros",counts.descansero],
             ["supervisor","⭐","Supervisores",counts.supervisor],
           ] as const).map(([role,icon,label,count]) => (
@@ -681,7 +700,7 @@ export default function PersonalPage() {
                   <div className="form-field">
                     <label>Rol en operaciones *</label>
                     <select value={form.role} onChange={(e) => setField("role",e.target.value)}>
-                      <option value="vigilante">🛡 Vigilante</option>
+                      <option value="vigilante">🛡 Agente</option>
                       <option value="descansero">🔄 Descansero</option>
                       <option value="supervisor">⭐ Supervisor</option>
                     </select>
@@ -689,7 +708,7 @@ export default function PersonalPage() {
                   <div className="form-field">
                     <label>Rol en el sistema (acceso)</label>
                     <select value={form.authRole} onChange={(e) => setField("authRole",e.target.value)}>
-                      <option value="vigilante">Vigilante</option>
+                      <option value="vigilante">Agente</option>
                       <option value="coordinador">Coordinador</option>
                       <option value="admin">Administrador</option>
                     </select>
