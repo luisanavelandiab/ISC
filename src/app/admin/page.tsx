@@ -154,26 +154,7 @@ function validateAssignment(
   existingAssignments: Assignment[]
 ): ValidationResult {
   const warnings: ValidationResult["warnings"] = [];
-
-  // 1. Turno duplicado ese día en CUALQUIER unidad — bloquea el guardado
-  const alreadyToday = existingAssignments.filter(
-    (a) =>
-      a.guardId === guard.id &&
-      dateKey(a.date) === dateKey(date) &&
-      a.shift !== "descanso" &&
-      (a.status as string) !== "inactivo"
-  );
-  if (alreadyToday.length > 0) {
-    const enMismaUnidad = alreadyToday.some(a => a.unitId === unit.id);
-    warnings.push({
-      type: "turno_duplicado",
-      severity: "critica",
-      message: enMismaUnidad
-        ? `${guard.name} ya tiene un turno asignado en ${unit.name} el ${date.toLocaleDateString("es-ES")}.`
-        : `${guard.name} ya tiene turno el ${date.toLocaleDateString("es-ES")} en ${alreadyToday[0].unitName}. No se puede asignar a dos unidades el mismo día.`,
-    });
-  }
-
+  
   // 2. Preferencia de turno — solo alerta si tiene preferencia específica (no "ambos")
   const pref = (guard.preferredShift || "").toLowerCase();
   if (pref && pref !== "ambos" && pref !== shift) {
