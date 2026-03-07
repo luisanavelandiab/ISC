@@ -74,7 +74,7 @@ export default function NewUnitPage() {
           </div>
 
           <div className="form-row">
-            <label>Vigilantes turno día</label>
+            <label>Agentes turno día</label>
             <br />
             <input
               type="number"
@@ -86,7 +86,7 @@ export default function NewUnitPage() {
           </div>
 
           <div className="form-row">
-            <label>Vigilantes turno noche</label>
+            <label>Agentes turno noche</label>
             <br />
             <input
               type="number"

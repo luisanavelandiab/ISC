@@ -240,7 +240,7 @@ export default function ReportesPage() {
           </div>
           <div className="rp-header-btns">
             <button className="btn-pri" onClick={()=>setShowVisita(true)}>+ Nueva visita</button>
-            <button className="btn-sec" onClick={()=>setShowObs(true)}>+ Obs. vigilante</button>
+            <button className="btn-sec" onClick={()=>setShowObs(true)}>+ Obs. agente</button>
             <button className="btn-nec" onClick={()=>setShowNec(true)}>+ Necesidad</button>
           </div>
         </div>
@@ -341,7 +341,7 @@ export default function ReportesPage() {
                 {units.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
               <select className="filter-select" value={fGuard} onChange={e=>setFGuard(e.target.value)}>
-                <option value="all">Todos los vigilantes</option>
+                <option value="all">Todos los agentes</option>
                 {guards.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
               <input className="filter-input" type="date" value={fDesde} onChange={e=>setFDesde(e.target.value)} title="Desde"/>
@@ -373,7 +373,7 @@ export default function ReportesPage() {
           <>
             <div className="filters-row">
               <select className="filter-select" value={fGuard} onChange={e=>setFGuard(e.target.value)}>
-                <option value="all">Todos los vigilantes</option>
+                <option value="all">Todos los agentes</option>
                 {guards.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
               <select className="filter-select" value={fNecTipo} onChange={e=>setFNecTipo(e.target.value as any)}>
@@ -525,9 +525,9 @@ export default function ReportesPage() {
           <div className="modal-overlay" onClick={()=>setShowObs(false)}>
             <div className="modal" onClick={e=>e.stopPropagation()}>
               <div className="modal-handle"/>
-              <h3 className="modal-title">Observación a vigilante</h3>
+              <h3 className="modal-title">Observación a agente</h3>
               <div className="form-row-2">
-                <div className="form-field"><label className="form-lbl">Vigilante *</label><select className="form-select" value={oGuard} onChange={e=>setOGuard(e.target.value)}><option value="">— Seleccionar —</option>{guards.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+                <div className="form-field"><label className="form-lbl">Agente *</label><select className="form-select" value={oGuard} onChange={e=>setOGuard(e.target.value)}><option value="">— Seleccionar —</option>{guards.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
                 <div className="form-field"><label className="form-lbl">Unidad *</label><select className="form-select" value={oUnit} onChange={e=>setOUnit(e.target.value)}><option value="">— Seleccionar —</option>{units.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
               </div>
               <div className="form-field"><label className="form-lbl">Tipo de observación</label><div className="estado-grid">{TIPOS_OBS.map(t=><button key={t} className={"estado-btn "+TIPO_CLS[t]+(oTipo===t?" selected":"")} onClick={()=>setOTipo(t)}>{t}</button>)}</div></div>
@@ -549,7 +549,7 @@ export default function ReportesPage() {
               <h3 className="modal-title">Registrar necesidad</h3>
               <div className="form-field"><label className="form-lbl">Origen del reporte</label><div className="origen-row"><button className={"origen-btn"+(nOrigen?" origen-active":"")} onClick={()=>setNOrigen(true)}>🏢 Visita a instalación</button><button className={"origen-btn"+(!nOrigen?" origen-active":"")} onClick={()=>setNOrigen(false)}>📞 Llamada / Solicitud personal</button></div></div>
               <div className="form-row-2">
-                <div className="form-field"><label className="form-lbl">Vigilante *</label><select className="form-select" value={nGuard} onChange={e=>setNGuard(e.target.value)}><option value="">— Seleccionar —</option>{guards.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+                <div className="form-field"><label className="form-lbl">Agente *</label><select className="form-select" value={nGuard} onChange={e=>setNGuard(e.target.value)}><option value="">— Seleccionar —</option>{guards.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
                 <div className="form-field"><label className="form-lbl">Unidad (opcional)</label><select className="form-select" value={nUnit} onChange={e=>setNUnit(e.target.value)}><option value="">— Ninguna —</option>{units.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
               </div>
               <div className="form-field"><label className="form-lbl">Tipo de necesidad</label><div className="tipo-nec-grid">{TIPOS_NEC.map(t=><button key={t} className={"tipo-nec-btn"+(nTipo===t?" tipo-active":"")} onClick={()=>setNTipo(t)}><span className="tipo-icon">{TIPO_NEC_ICON[t]}</span><span>{t}</span></button>)}</div></div>

@@ -329,7 +329,7 @@ export default function VigilantePage() {
       <div className="vp">
         <div className="vp-empty">
           <span style={{ fontSize: 40 }}>👤</span>
-          <p>No se encontró tu perfil de vigilante.<br />Contacta al administrador.</p>
+          <p>No se encontró tu perfil de agente.<br />Contacta al administrador.</p>
         </div>
       </div>
     </>

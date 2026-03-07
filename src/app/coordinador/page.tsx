@@ -192,7 +192,7 @@ export default function CoordinadorPage() {
 
         <div className="kpi-row">
           <div className="kpi"><div className="kpi-lbl">Unidades</div><div className="kpi-val">{units.length}</div></div>
-          <div className="kpi"><div className="kpi-lbl">Vigilantes</div><div className="kpi-val">{guards.filter((g) => g.available||g.state==="Activo").length}</div></div>
+          <div className="kpi"><div className="kpi-lbl">Agentes</div><div className="kpi-val">{guards.filter((g) => g.available||g.state==="Activo").length}</div></div>
           <div className="kpi">
             <div className="kpi-lbl">Cobertura</div>
             <div className="kpi-val" style={{color:coveragePct>=90?"#81C784":coveragePct>=60?"var(--gold)":"#E57373"}}>{coveragePct}%</div>

@@ -612,7 +612,7 @@ export default function PersonalPage() {
                   <div className="form-field">
                     <label>Rol en operaciones *</label>
                     <select value={form.role} onChange={(e) => setField("role",e.target.value)}>
-                      <option value="vigilante">🛡 Vigilante</option>
+                      <option value="vigilante">🛡 Agente</option>
                       <option value="descansero">🔄 Descansero</option>
                       <option value="supervisor">⭐ Supervisor</option>
                     </select>
@@ -620,7 +620,7 @@ export default function PersonalPage() {
                   <div className="form-field">
                     <label>Rol en el sistema (acceso)</label>
                     <select value={form.authRole} onChange={(e) => setField("authRole",e.target.value)}>
-                      <option value="vigilante">Vigilante</option>
+                      <option value="vigilante">Agente</option>
                       <option value="coordinador">Coordinador</option>
                       <option value="admin">Administrador</option>
                     </select>

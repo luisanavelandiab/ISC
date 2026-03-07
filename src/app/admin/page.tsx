@@ -491,7 +491,7 @@ export default function DashboardPage() {
         {/* KPIs */}
         <div className="kpi-row">
           <div className="kpi"><div className="kpi-lbl">Unidades</div><div className="kpi-val">{units.length}</div></div>
-          <div className="kpi"><div className="kpi-lbl">Vigilantes</div><div className="kpi-val">{assignableGuards.length}</div></div>
+          <div className="kpi"><div className="kpi-lbl">Agentes</div><div className="kpi-val">{assignableGuards.length}</div></div>
           <div className="kpi">
             <div className="kpi-lbl">Cobertura</div>
             <div className="kpi-val" style={{ color: coveragePct>=90?"#81C784":coveragePct>=60?"var(--gold)":"#E57373" }}>{coveragePct}%</div>
@@ -696,7 +696,7 @@ export default function DashboardPage() {
           <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget){setModal(null);setValidationResult(null);}}}>
             <div className="modal">
               <div className="modal-handle"/>
-              <h3 className="modal-title">Asignar Vigilante</h3>
+              <h3 className="modal-title">Asignar Agente</h3>
 
               <div className="modal-info">
                 <span><strong>Unidad:</strong> {modal.unitName}</span>
@@ -728,7 +728,7 @@ export default function DashboardPage() {
 
               {/* FIX: selector solo muestra vigilantes asignables */}
               <select value={selGuard} onChange={e=>setSelGuard(e.target.value)}>
-                <option value="">— Seleccionar vigilante —</option>
+                <option value="">— Seleccionar agente —</option>
                 {assignableGuards.map(g => (
                   <option key={g.id} value={g.id}>
                     {g.name}
@@ -771,14 +771,14 @@ export default function DashboardPage() {
                 </button>
                 <button className="btn-s" onClick={()=>{setModal(null);setValidationResult(null);}}>Cancelar</button>
               </div>
-              <p className="modal-note">💡 Se guarda como borrador. Usa Publicar para que los vigilantes lo vean.</p>
+              <p className="modal-note">💡 Se guarda como borrador. Usa Publicar para que los agentes lo vean.</p>
             </div>
           </div>
         )}
 
         {/* Toast */}
         {publishSuccess && (
-          <div className="toast-success">✓ Cambios publicados — los vigilantes ya pueden verlos</div>
+          <div className="toast-success">✓ Cambios publicados — los agentes ya pueden verlos</div>
         )}
       </div>
     </>

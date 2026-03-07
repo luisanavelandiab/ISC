@@ -175,7 +175,7 @@ export default function UnitDetailPage() {
 
   // ── Asignar ──
   async function handleAssign() {
-    if (!selectedPerson) { alert("Selecciona un vigilante"); return; }
+    if (!selectedPerson) { alert("Selecciona un agente"); return; }
     if (isShiftFull())   { alert("🚫 Este turno ya está completamente cubierto"); return; }
     setSaving(true);
     try {
@@ -184,7 +184,7 @@ export default function UnitDetailPage() {
         where("personnelId", "==", selectedPerson),
         where("status", "==", "activo"),
       ));
-      if (!activeSnap.empty) { alert("🚫 Este vigilante ya está asignado a otra unidad activa"); return; }
+      if (!activeSnap.empty) { alert("🚫 Este agente ya está asignado a otra unidad activa"); return; }
       await addDoc(collection(db, "assignments"), {
         personnelId: selectedPerson, unitId,
         shiftType, patternType: "fijo",
@@ -292,10 +292,10 @@ export default function UnitDetailPage() {
         </DndContext>
 
         {/* ── Asignar vigilante ── */}
-        <p className="sec-lbl" style={{ marginTop: 32 }}>Asignar vigilante</p>
+        <p className="sec-lbl" style={{ marginTop: 32 }}>Asignar agentes</p>
         <div className="assign-box">
           <select className="udp-select" value={selectedPerson} onChange={e => setSelectedPerson(e.target.value)}>
-            <option value="">— Seleccionar vigilante —</option>
+            <option value="">— Seleccionar agente —</option>
             {personnel.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <select className="udp-select udp-select-sm" value={shiftType} onChange={e => setShiftType(e.target.value)}>
@@ -359,7 +359,7 @@ export default function UnitDetailPage() {
               <div className="modal-icon">🛑</div>
               <h3 className="modal-title">¿Finalizar asignación?</h3>
               <p className="modal-desc">
-                El vigilante <strong>{assignments.find(a => a.id === confirm)?.personnelName}</strong> será
+                El agente <strong>{assignments.find(a => a.id === confirm)?.personnelName}</strong> será
                 removido de este turno. Esta acción no se puede deshacer.
               </p>
               <div className="modal-actions">

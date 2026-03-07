@@ -422,7 +422,7 @@ export default function HistorialPage() {
                 </div>
 
                 <div className="filter-group">
-                  <span className="filter-lbl">Vigilante</span>
+                  <span className="filter-lbl">Agente</span>
                   <select className="filter-select" value={filterGuard} onChange={(e) => setFilterGuard(e.target.value)}>
                     <option value="todas">Todos</option>
                     {guards.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
@@ -479,7 +479,7 @@ export default function HistorialPage() {
                       <tr>
                         <th>Acción</th>
                         <th>Unidad</th>
-                        <th>Vigilante</th>
+                        <th>Agente</th>
                         <th>Turno</th>
                         <th>Fecha del turno</th>
                         <th>Registrado</th>
@@ -543,7 +543,7 @@ export default function HistorialPage() {
                                         <span className="detail-val detail-mono">{log.unitId || "—"}</span>
                                       </div>
                                       <div className="detail-item">
-                                        <span className="detail-lbl">Vigilante ID</span>
+                                        <span className="detail-lbl">Agente ID</span>
                                         <span className="detail-val detail-mono">{log.guardId || "—"}</span>
                                       </div>
                                     </div>

@@ -51,21 +51,21 @@ const DEFAULT_RULES: AlertRule[] = [
   {
     id: "sin_cobertura",
     label: "Turno sin cubrir",
-    description: "Alerta cuando una unidad tiene un turno (día o noche) sin ningún vigilante asignado.",
+    description: "Alerta cuando una unidad tiene un turno (día o noche) sin ningún agente asignado.",
     enabled: true,
     severity: "critica",
   },
   {
     id: "perfil_incorrecto",
     label: "Perfil no compatible",
-    description: "Alerta cuando el vigilante asignado no coincide con el perfil o categoría requerida por la unidad.",
+    description: "Alerta cuando el agente asignado no coincide con el perfil o categoría requerida por la unidad.",
     enabled: true,
     severity: "advertencia",
   },
   {
     id: "sin_descanso",
     label: "Sin descanso (6+ días consecutivos)",
-    description: "Alerta cuando un vigilante lleva 6 o más días seguidos trabajando sin un día de descanso.",
+    description: "Alerta cuando un agente lleva 6 o más días seguidos trabajando sin un día de descanso.",
     enabled: true,
     severity: "critica",
   },
@@ -86,7 +86,7 @@ const DEFAULT_RULES: AlertRule[] = [
   {
     id: "turno_duplicado",
     label: "Turno duplicado",
-    description: "Alerta cuando un vigilante tiene dos turnos asignados el mismo día.",
+    description: "Alerta cuando un agente tiene dos turnos asignados el mismo día.",
     enabled: true,
     severity: "critica",
   },
@@ -426,7 +426,7 @@ export default function AlertasPage() {
                             )}
                             {alert.guardName && (
                               <div className="detail-item">
-                                <span className="detail-lbl">Vigilante</span>
+                                <span className="detail-lbl">Agente</span>
                                 <span className="detail-val">{alert.guardName}</span>
                               </div>
                             )}
@@ -461,7 +461,7 @@ export default function AlertasPage() {
         {tab === "reglas" && (
           <div className="panel">
             <p className="panel-desc">
-              Configura qué validaciones se ejecutan automáticamente al asignar vigilantes. 
+              Configura qué validaciones se ejecutan automáticamente al asignar agentes. 
               Los cambios se aplican de forma inmediata en el dashboard.
             </p>
 
@@ -502,7 +502,7 @@ export default function AlertasPage() {
                     <span>4h</span><span>12h</span><span>24h</span>
                   </div>
                   <p className="threshold-hint">
-                    Tiempo mínimo entre el fin de un turno y el inicio del siguiente para el mismo vigilante.
+                    Tiempo mínimo entre el fin de un turno y el inicio del siguiente para el mismo agente.
                   </p>
                 </div>
               </div>
@@ -602,7 +602,7 @@ export default function AlertasPage() {
                       <th>Tipo</th>
                       <th>Severidad</th>
                       <th>Unidad</th>
-                      <th>Vigilante</th>
+                      <th>Agente</th>
                       <th>Fecha turno</th>
                       <th>Generada</th>
                       <th>Resuelta</th>
