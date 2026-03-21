@@ -1,7 +1,7 @@
 export interface Guard {
   id: string;
   name: string;
-  // agrega los campos que tenga tu colección en Firestore
+  // agrega los campos que tenga la colección en Firestore
 }
 
 export interface Unit {

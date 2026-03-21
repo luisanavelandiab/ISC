@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @next/next/no-img-element */
- 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 

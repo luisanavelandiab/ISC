@@ -700,32 +700,6 @@ export default function PersonalPage() {
                   </div>
                 </div>
 
-                {/* Acceso al sistema */}
-                <p className="form-section-title">🔐 Acceso al sistema</p>
-                {modal==="new" && (
-                  <div className="auth-notice">Al guardar se creará automáticamente el usuario en Firebase Auth.</div>
-                )}
-                <div className="form-grid">
-                  <div className="form-field form-field-full">
-                    <label>Correo electrónico {modal==="new"?"*":""}</label>
-                    <input type="email" placeholder="juan@ejemplo.com"
-                      value={form.email} onChange={(e) => setField("email",e.target.value)}/>
-                  </div>
-                  <div className="form-field form-field-full">
-                    <label>{modal==="new"?"Contraseña inicial * (mín. 6 caracteres)":"Contraseña guardada"}</label>
-                    <div className="pass-input-wrap">
-                      <input
-                        type={showFormPass?"text":"password"}
-                        placeholder={modal==="new"?"Mín. 6 caracteres":"Contraseña actual"}
-                        value={modal==="new"?formPassword:(form.password||"")}
-                        onChange={(e) => modal==="new"?setFormPassword(e.target.value):setField("password",e.target.value)}
-                      />
-                      <button type="button" className="btn-toggle-pass" onClick={() => setShowFormPass(v=>!v)}>
-                        {showFormPass?"🙈":"👁"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {formError && <p className="form-error">⚠ {formError}</p>}
@@ -735,25 +709,6 @@ export default function PersonalPage() {
                   {saving?<><span className="spinner-sm"/> Guardando…</>:modal==="new"?"Crear perfil y usuario":"Guardar cambios"}
                 </button>
                 <button className="btn-cancel" onClick={() => setModal(null)}>Cancelar</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal credenciales */}
-        {createdCreds && (
-          <div className="overlay overlay-confirm">
-            <div className="modal modal-confirm">
-              <div className="confirm-icon">✅</div>
-              <h3 className="confirm-title">Usuario creado</h3>
-              <p className="confirm-body">Comparte estas credenciales con la persona:</p>
-              <div className="creds-box">
-                <div className="cred-row"><span className="cred-lbl">Correo</span><span className="cred-val">{createdCreds.email}</span></div>
-                <div className="cred-row"><span className="cred-lbl">Contraseña</span><span className="cred-val cred-mono">{createdCreds.password}</span></div>
-              </div>
-              <p className="confirm-hint">Se recomienda que el usuario cambie su contraseña al ingresar.</p>
-              <div className="confirm-actions">
-                <button className="btn-confirm btn-confirm-green" onClick={() => setCreatedCreds(null)}>Entendido</button>
               </div>
             </div>
           </div>
