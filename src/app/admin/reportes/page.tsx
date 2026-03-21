@@ -8,6 +8,7 @@ import {
   Timestamp, query, orderBy,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { NotifButton } from "../../../components/NotifButton";
 
 type EstadoVisita    = "Bueno" | "Regular" | "Deficiente" | "Crítico";
 type TipoObservacion = "Positiva" | "Negativa" | "Neutral";
@@ -48,6 +49,10 @@ const TIPO_CLS:   Record<string,string> = { Positiva:"badge-ok", Negativa:"badge
 const PRIO_CLS:   Record<string,string> = { Alta:"badge-critical", Media:"badge-warn", Baja:"badge-ok" };
 const ENEC_CLS:   Record<string,string> = { Pendiente:"badge-warn", "En proceso":"badge-neutral", Atendido:"badge-ok" };
 const TIPO_NEC_ICON: Record<TipoNecesidad,string> = { Uniforme:"👕", Calzado:"👟", Equipamiento:"🦺", Munición:"🔫", Otro:"📦" };
+
+// ─── CAMBIA ESTO por el ID real del supervisor autenticado ───
+// Si usas Firebase Auth sería: auth.currentUser?.uid
+const SUPERVISOR_ID_ACTUAL = "ID_DEL_SUPERVISOR_AQUI";
 
 function fmtDate(ts: Timestamp) {
   return ts.toDate().toLocaleString("es-ES",{ day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
@@ -224,9 +229,9 @@ export default function ReportesPage() {
     return true;
   }),[necs,fGuard,fNecEstado,fNecPrio,fNecTipo]);
 
-  const statNec      = { total:filteredNecs.length, pendiente:filteredNecs.filter(n=>n.estado==="Pendiente").length, alta:filteredNecs.filter(n=>n.prioridad==="Alta"&&n.estado!=="Atendido").length, atendido:filteredNecs.filter(n=>n.estado==="Atendido").length };
-  const statVisitas  = { total:filteredVisitas.length, bueno:filteredVisitas.filter(v=>v.estado==="Bueno").length, deficiente:filteredVisitas.filter(v=>v.estado==="Deficiente"||v.estado==="Crítico").length };
-  const statObs      = { total:filteredObs.length, positiva:filteredObs.filter(o=>o.tipo==="Positiva").length, negativa:filteredObs.filter(o=>o.tipo==="Negativa").length };
+  const statNec     = { total:filteredNecs.length, pendiente:filteredNecs.filter(n=>n.estado==="Pendiente").length, alta:filteredNecs.filter(n=>n.prioridad==="Alta"&&n.estado!=="Atendido").length, atendido:filteredNecs.filter(n=>n.estado==="Atendido").length };
+  const statVisitas = { total:filteredVisitas.length, bueno:filteredVisitas.filter(v=>v.estado==="Bueno").length, deficiente:filteredVisitas.filter(v=>v.estado==="Deficiente"||v.estado==="Crítico").length };
+  const statObs     = { total:filteredObs.length, positiva:filteredObs.filter(o=>o.tipo==="Positiva").length, negativa:filteredObs.filter(o=>o.tipo==="Negativa").length };
 
   return (
     <>
@@ -238,10 +243,16 @@ export default function ReportesPage() {
             <p className="rp-eye">Módulo de reportes</p>
             <h1 className="rp-title">Reportes <span>Operativos</span></h1>
           </div>
-          <div className="rp-header-btns">
-            <button className="btn-pri" onClick={()=>setShowVisita(true)}>+ Nueva visita</button>
-            <button className="btn-sec" onClick={()=>setShowObs(true)}>+ Obs. agente</button>
-            <button className="btn-nec" onClick={()=>setShowNec(true)}>+ Necesidad</button>
+          <div className="rp-header-right">
+            {/* ── Botón de notificaciones push ── */}
+            <div className="notif-wrapper">
+              <NotifButton supervisorId={SUPERVISOR_ID_ACTUAL} />
+            </div>
+            <div className="rp-header-btns">
+              <button className="btn-pri" onClick={()=>setShowVisita(true)}>+ Nueva visita</button>
+              <button className="btn-sec" onClick={()=>setShowObs(true)}>+ Obs. agente</button>
+              <button className="btn-nec" onClick={()=>setShowNec(true)}>+ Necesidad</button>
+            </div>
           </div>
         </div>
 
@@ -301,7 +312,6 @@ export default function ReportesPage() {
                           )}
                         </div>
                       </div>
-                      {/* Mapa inline si tiene coordenadas */}
                       {v.lat&&v.lng&&(
                         <div className="map-card">
                           <div className="map-card-inner">
@@ -439,7 +449,6 @@ export default function ReportesPage() {
             <div className="modal" onClick={e=>e.stopPropagation()}>
               <div className="modal-handle"/>
               <h3 className="modal-title">Nueva visita a unidad</h3>
-
               <div className="form-field">
                 <label className="form-lbl">Unidad *</label>
                 <select className="form-select" value={vUnit} onChange={e=>setVUnit(e.target.value)}>
@@ -447,12 +456,10 @@ export default function ReportesPage() {
                   {units.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
-
               <div className="form-field">
                 <label className="form-lbl">Inspector / Responsable *</label>
                 <input className="form-input" placeholder="Nombre del inspector" value={vInspector} onChange={e=>setVInspector(e.target.value)}/>
               </div>
-
               <div className="form-field">
                 <label className="form-lbl">Estado encontrado</label>
                 <div className="estado-grid">
@@ -461,8 +468,6 @@ export default function ReportesPage() {
                   ))}
                 </div>
               </div>
-
-              {/* ── UBICACIÓN GPS ── */}
               <div className="form-field">
                 <label className="form-lbl">Ubicación GPS</label>
                 {vLat&&vLng ? (
@@ -487,17 +492,13 @@ export default function ReportesPage() {
                 ) : (
                   <div className="loc-empty-box">
                     <button className={"loc-capture-btn"+(locLoading?" loading":"")} onClick={captureLocation} disabled={locLoading}>
-                      {locLoading
-                        ? <><span className="loc-spin"/>Obteniendo ubicación…</>
-                        : <>📍 Capturar ubicación actual</>
-                      }
+                      {locLoading ? <><span className="loc-spin"/>Obteniendo ubicación…</> : <>📍 Capturar ubicación actual</>}
                     </button>
                     <p className="loc-hint-txt">Usa el GPS del dispositivo para registrar dónde estás ahora.</p>
                     {locError&&<div className="loc-err-txt">⚠ {locError}</div>}
                   </div>
                 )}
               </div>
-
               <div className="form-field">
                 <label className="form-lbl">Foto / Evidencia</label>
                 <label className="foto-upload">
@@ -506,12 +507,10 @@ export default function ReportesPage() {
                 </label>
                 {vFoto&&<button className="btn-clear" style={{alignSelf:"flex-start"}} onClick={()=>setVFoto(null)}>✕ Quitar foto</button>}
               </div>
-
               <div className="form-field">
                 <label className="form-lbl">Observaciones</label>
                 <textarea className="form-textarea" placeholder="Describe lo encontrado en la visita…" rows={3} value={vObs} onChange={e=>setVObs(e.target.value)}/>
               </div>
-
               <div className="modal-actions">
                 <button className="btn-pri" onClick={saveVisita} disabled={vSaving}>{vSaving?"Guardando…":"Guardar visita"}</button>
                 <button className="btn-sec" onClick={()=>{setShowVisita(false);resetVisita();}}>Cancelar</button>
@@ -583,6 +582,8 @@ const CSS = `
 .rp-title{font-family:'Cormorant Garamond',serif;font-size:clamp(22px,5vw,34px);font-weight:300;line-height:1.1}
 .rp-title span{color:var(--gold);font-style:italic;font-weight:600}
 .rp-header{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:24px}
+.rp-header-right{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.notif-wrapper{padding:6px 0}
 .rp-header-btns{display:flex;gap:8px;flex-wrap:wrap}
 .btn-pri{background:var(--gold);color:var(--black);border:none;font-family:'Montserrat',sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:10px 18px;cursor:pointer;transition:opacity .2s;white-space:nowrap}
 .btn-pri:hover{opacity:.85}.btn-pri:disabled{opacity:.35;cursor:not-allowed}
@@ -612,7 +613,6 @@ const CSS = `
 .report-list{display:flex;flex-direction:column;gap:8px}
 .report-card{background:var(--card);border:1px solid var(--border);padding:14px 16px;transition:border-color .2s}
 .report-card:hover{border-color:rgba(201,168,76,.35)}
-/* Mapa en tarjeta */
 .map-card{margin:8px 0;border:1px solid var(--border);overflow:hidden}
 .map-card-inner{position:relative}
 .map-iframe-card{width:100%;height:130px;border:none;display:block;filter:invert(.85) hue-rotate(180deg) saturate(.6) brightness(.9)}
@@ -621,7 +621,6 @@ const CSS = `
 .map-card-label{font-size:9px;color:var(--dim);padding:6px 8px;background:rgba(0,0,0,.3);border-top:1px solid rgba(201,168,76,.1)}
 .loc-link-card{font-size:10px;color:var(--gold);text-decoration:none;font-weight:600}
 .loc-link-card:hover{text-decoration:underline}
-/* Necesidades */
 .nec-card{border-left:3px solid var(--border)}.nec-alta{border-left-color:#E57373!important;background:rgba(229,115,115,.04)}.nec-done{opacity:.6;border-left-color:rgba(129,199,132,.4)!important}
 .rc-head{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
 .rc-title-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
@@ -652,7 +651,6 @@ const CSS = `
 .rc-foto:hover{opacity:.85}
 .rc-foto-hint{font-size:9px;color:var(--dim)}
 .rp-empty{padding:48px 20px;text-align:center;color:var(--dim);font-size:13px;display:flex;flex-direction:column;align-items:center;gap:16px}
-/* ── GPS en modal ── */
 .loc-empty-box{display:flex;flex-direction:column;gap:8px}
 .loc-capture-btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 16px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.35);color:var(--gold);font-family:'Montserrat',sans-serif;font-size:11px;font-weight:600;letter-spacing:.5px;cursor:pointer;transition:all .2s;width:100%}
 .loc-capture-btn:hover:not(:disabled){background:rgba(201,168,76,.15);border-color:var(--gold)}
@@ -672,7 +670,6 @@ const CSS = `
 .loc-coords-txt{font-size:9px;color:var(--dim);font-family:monospace}
 .loc-remove-btn{background:none;border:1px solid rgba(229,115,115,.3);color:var(--danger);font-family:'Montserrat',sans-serif;font-size:9px;font-weight:600;padding:4px 10px;cursor:pointer;transition:all .15s}
 .loc-remove-btn:hover{background:rgba(229,115,115,.08)}
-/* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);display:flex;justify-content:center;align-items:flex-end;z-index:10000}
 .modal{background:#161625;border:1px solid var(--border);border-bottom:none;padding:24px 20px 32px;width:100%;max-width:520px;display:flex;flex-direction:column;gap:14px;border-radius:16px 16px 0 0;box-shadow:0 -20px 60px rgba(0,0,0,.8);animation:slideUp .25s ease both;max-height:90vh;overflow-y:auto}
 @keyframes slideUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
@@ -713,9 +710,11 @@ const CSS = `
   .modal-overlay{align-items:center}
   .modal{border-radius:4px;border-bottom:1px solid var(--border);animation:none}
   .modal-handle{display:none}
+  .rp-header-right{flex-direction:row;align-items:center}
 }
 @media(max-width:600px){
   .rp{padding:16px 12px 48px}.rp-header{flex-direction:column}.rp-header-btns{width:100%}
+  .rp-header-right{width:100%;align-items:flex-start}
   .btn-pri,.btn-sec,.btn-nec{flex:1;text-align:center}
   .stats-row,.stats-4{grid-template-columns:1fr 1fr}
   .form-row-2{grid-template-columns:1fr}
