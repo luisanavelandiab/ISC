@@ -50,14 +50,15 @@ export default function AdminLayout({
     router.push("/login");
   };
 
-  const navLinks = [
-    { href: "/admin",           label: "Dashboard", icon: "◈" },
-    { href: "/admin/units",     label: "Unidades",  icon: "◉" },
-    { href: "/admin/personal",  label: "Personal",  icon: "◆" },
-    { href: "/admin/reportes",  label: "Reportes",  icon: "◎" },
-    { href: "/admin/alertas",   label: "Alertas",   icon: "◇" },
-    { href: "/admin/historial", label: "Historial", icon: "◬" },
-  ];
+ const navLinks = [
+  { href: "/admin",                      label: "Dashboard", icon: "◈" },
+  { href: "/admin/units",                label: "Unidades",  icon: "◉" },
+  { href: "/admin/personal",             label: "Personal",  icon: "◆" },
+  { href: "/admin/reportes",             label: "Reportes",  icon: "◎" },
+  { href: "/admin/visitas-calendario",   label: "Visitas",   icon: "◐" },
+  { href: "/admin/alertas",              label: "Alertas",   icon: "◇" },
+  { href: "/admin/historial",            label: "Historial", icon: "◬" },
+];
 
   if (!authorized) {
     return (
