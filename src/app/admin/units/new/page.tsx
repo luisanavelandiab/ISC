@@ -15,6 +15,7 @@ const SHIFT_LABELS: Record<string, string> = {
   E: "1 Fijo + 2 Rotativos",
 };
 const DAY_NAMES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const COMPANIES = ["CONSULTANS", "CENTRAL"] as const;
 
 interface PositionRow {
   preferredShift: "dia" | "noche";
@@ -23,12 +24,24 @@ interface PositionRow {
 }
 
 const defaultForm = {
+  // Identificación
   name: "",
   address: "",
+  phone: "",
+  email: "",
+  notifyChanges: false,
+  // Contrato
+  contractTitle: "",
+  contractNumber: "",
+  company: "" as "" | typeof COMPANIES[number],
+  startDate: "",
+  endDate: "",
+  // Turno
   shiftType: "",
   restDay: "",
   rotation: false,
   minCoverage: "",
+  // Notas
   notes: "",
 };
 
@@ -73,6 +86,9 @@ export default function NewUnitPage() {
       const data: Record<string, unknown> = {
         name: form.name.trim(),
         address: form.address.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        notifyChanges: form.notifyChanges,
         status: "Activo",
         createdAt: Timestamp.now(),
         requiredPositions: positions.map((p) => ({
@@ -82,6 +98,13 @@ export default function NewUnitPage() {
           requiredCategory: p.requiredCategory.trim(),
         })),
       };
+      // Contrato
+      if (form.contractTitle.trim()) data.contractTitle = form.contractTitle.trim();
+      if (form.contractNumber.trim()) data.contractNumber = form.contractNumber.trim();
+      if (form.company) data.company = form.company;
+      if (form.startDate) data.startDate = form.startDate;
+      if (form.endDate) data.endDate = form.endDate;
+      // Turno
       if (form.shiftType) data.shiftType = form.shiftType;
       if (form.restDay !== "") data.restDay = Number(form.restDay);
       data.rotation = form.rotation;
@@ -96,6 +119,18 @@ export default function NewUnitPage() {
       setLoading(false);
     }
   }
+
+  // Contract duration helper
+  const contractDays =
+    form.startDate && form.endDate
+      ? Math.max(
+          0,
+          Math.round(
+            (new Date(form.endDate).getTime() - new Date(form.startDate).getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
+        )
+      : null;
 
   return (
     <>
@@ -129,14 +164,15 @@ export default function NewUnitPage() {
           <div className="steps-row">
             {[
               { n: 1, label: "Identificación" },
-              { n: 2, label: "Turno" },
-              { n: 3, label: "Posiciones" },
-              { n: 4, label: "Notas" },
+              { n: 2, label: "Contrato" },
+              { n: 3, label: "Turno" },
+              { n: 4, label: "Posiciones" },
+              { n: 5, label: "Notas" },
             ].map(({ n, label }) => (
               <button
                 key={n}
                 className={`step-item${step === n ? " active" : ""}${n < step ? " done" : ""}`}
-                onClick={() => n < step || canAdvance ? setStep(n) : undefined}
+                onClick={() => (n < step || canAdvance ? setStep(n) : undefined)}
               >
                 <span className="step-num">{n < step ? "✓" : n}</span>
                 <span className="step-lbl">{label}</span>
@@ -170,13 +206,134 @@ export default function NewUnitPage() {
                       placeholder="Ej: Av. Principal 123"
                     />
                   </div>
+                  <div className="fld">
+                    <label className="flbl">Teléfono</label>
+                    <input
+                      className="finp"
+                      type="tel"
+                      value={form.phone}
+                      onChange={(e) => setField("phone", e.target.value)}
+                      placeholder="Ej: +51 999 888 777"
+                    />
+                  </div>
+                  <div className="fld">
+                    <label className="flbl">Correo electrónico</label>
+                    <input
+                      className="finp"
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => setField("email", e.target.value)}
+                      placeholder="Ej: unidad@empresa.com"
+                    />
+                  </div>
+                </div>
+
+                <div className="tog-row">
+                  <div>
+                    <span className="flbl">Notificar cambios</span>
+                    <p className="tog-hint">
+                      Enviar notificaciones automáticas al correo registrado ante cambios de
+                      personal o turno
+                    </p>
+                  </div>
+                  <button
+                    className={"tog-btn" + (form.notifyChanges ? " on" : "")}
+                    onClick={() => setField("notifyChanges", !form.notifyChanges)}
+                    type="button"
+                  >
+                    <span className="tog-thumb" />
+                    <span className="tog-lbl">{form.notifyChanges ? "Sí" : "No"}</span>
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* ─── Step 2: Turno ─── */}
+            {/* ─── Step 2: Contrato ─── */}
             {step === 2 && (
               <div className="step-body" key="s2">
+                <p className="slbl">📄 Información de contrato</p>
+
+                {/* Company selector */}
+                <div className="fld">
+                  <label className="flbl">Empresa</label>
+                  <div className="company-row">
+                    {COMPANIES.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        className={`company-btn${form.company === c ? " selected" : ""}`}
+                        onClick={() => setField("company", c)}
+                      >
+                        <span className="company-icon">{c === "CONSULTANS" ? "🏢" : "🏛️"}</span>
+                        <span className="company-name">{c}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="g2">
+                  <div className="fld">
+                    <label className="flbl">Título de contrato</label>
+                    <input
+                      className="finp"
+                      value={form.contractTitle}
+                      onChange={(e) => setField("contractTitle", e.target.value)}
+                      placeholder="Ej: Servicio de Vigilancia Especializada"
+                    />
+                  </div>
+                  <div className="fld">
+                    <label className="flbl">Número de contrato</label>
+                    <input
+                      className="finp"
+                      value={form.contractNumber}
+                      onChange={(e) => setField("contractNumber", e.target.value)}
+                      placeholder="Ej: CTR-2024-0042"
+                    />
+                  </div>
+                  <div className="fld">
+                    <label className="flbl">Fecha de inicio</label>
+                    <input
+                      className="finp finp-date"
+                      type="date"
+                      value={form.startDate}
+                      onChange={(e) => setField("startDate", e.target.value)}
+                    />
+                  </div>
+                  <div className="fld">
+                    <label className="flbl">Fecha de finalización</label>
+                    <input
+                      className="finp finp-date"
+                      type="date"
+                      value={form.endDate}
+                      onChange={(e) => setField("endDate", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Duration badge */}
+                {contractDays !== null && (
+                  <div className="duration-row">
+                    <span className="bdg bdg-shift" style={{ fontSize: 11, padding: "6px 16px" }}>
+                      📅 Duración:{" "}
+                      {contractDays >= 365
+                        ? `${(contractDays / 365).toFixed(1)} años`
+                        : contractDays >= 30
+                        ? `${Math.floor(contractDays / 30)} meses`
+                        : `${contractDays} días`}
+                    </span>
+                    {contractDays < 0 && (
+                      <span className="bdg" style={{ fontSize: 11, padding: "6px 16px", background: "rgba(229,115,115,.1)", color: "var(--danger)", borderColor: "rgba(229,115,115,.3)" }}>
+                        ⚠️ La fecha de fin es anterior al inicio
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ─── Step 3: Turno ─── */}
+            {step === 3 && (
+              <div className="step-body" key="s3">
                 <p className="slbl">⏰ Configuración de turno</p>
                 <div className="g3">
                   <div className="fld">
@@ -225,7 +382,10 @@ export default function NewUnitPage() {
 
                 {form.shiftType && (
                   <div className="shift-preview">
-                    <span className="bdg bdg-shift" style={{ fontSize: 11, padding: "6px 14px" }}>
+                    <span
+                      className="bdg bdg-shift"
+                      style={{ fontSize: 11, padding: "6px 14px" }}
+                    >
                       {form.shiftType} — {SHIFT_LABELS[form.shiftType]}
                     </span>
                   </div>
@@ -234,7 +394,9 @@ export default function NewUnitPage() {
                 <div className="tog-row">
                   <div>
                     <span className="flbl">Rotación de personal</span>
-                    <p className="tog-hint">Activa si el personal rota entre diferentes unidades</p>
+                    <p className="tog-hint">
+                      Activa si el personal rota entre diferentes unidades
+                    </p>
                   </div>
                   <button
                     className={"tog-btn" + (form.rotation ? " on" : "")}
@@ -248,9 +410,9 @@ export default function NewUnitPage() {
               </div>
             )}
 
-            {/* ─── Step 3: Posiciones ─── */}
-            {step === 3 && (
-              <div className="step-body" key="s3">
+            {/* ─── Step 4: Posiciones ─── */}
+            {step === 4 && (
+              <div className="step-body" key="s4">
                 <div className="sec-hd">
                   <p className="slbl">👥 Posiciones requeridas</p>
                   <button className="add-btn" onClick={addPos} type="button">
@@ -261,7 +423,12 @@ export default function NewUnitPage() {
                 {positions.length === 0 && (
                   <div className="emp-state">
                     <p>No hay posiciones definidas.</p>
-                    <button className="add-btn" onClick={addPos} type="button" style={{ marginTop: 12 }}>
+                    <button
+                      className="add-btn"
+                      onClick={addPos}
+                      type="button"
+                      style={{ marginTop: 12 }}
+                    >
                       + Agregar primera posición
                     </button>
                   </div>
@@ -318,22 +485,29 @@ export default function NewUnitPage() {
                 {positions.length > 0 && (
                   <div className="pos-summary">
                     <span className="bdg bdg-pos">
-                      {positions.reduce((acc, p) => acc + (Number(p.quantity) || 0), 0)} agentes total
+                      {positions.reduce((acc, p) => acc + (Number(p.quantity) || 0), 0)} agentes
+                      total
                     </span>
                     <span className="bdg bdg-shift">
-                      {positions.filter((p) => p.preferredShift === "dia").reduce((a, p) => a + (Number(p.quantity) || 0), 0)} día
+                      {positions
+                        .filter((p) => p.preferredShift === "dia")
+                        .reduce((a, p) => a + (Number(p.quantity) || 0), 0)}{" "}
+                      día
                     </span>
                     <span className="bdg bdg-rest">
-                      {positions.filter((p) => p.preferredShift === "noche").reduce((a, p) => a + (Number(p.quantity) || 0), 0)} noche
+                      {positions
+                        .filter((p) => p.preferredShift === "noche")
+                        .reduce((a, p) => a + (Number(p.quantity) || 0), 0)}{" "}
+                      noche
                     </span>
                   </div>
                 )}
               </div>
             )}
 
-            {/* ─── Step 4: Notas + resumen ─── */}
-            {step === 4 && (
-              <div className="step-body" key="s4">
+            {/* ─── Step 5: Notas + resumen ─── */}
+            {step === 5 && (
+              <div className="step-body" key="s5">
                 <p className="slbl">📝 Notas y confirmación</p>
                 <div className="fld">
                   <label className="flbl">Notas internas</label>
@@ -348,8 +522,12 @@ export default function NewUnitPage() {
 
                 {/* Resumen */}
                 <div className="summary-box">
-                  <p className="slbl" style={{ marginBottom: 14 }}>✅ Resumen de la unidad</p>
+                  <p className="slbl" style={{ marginBottom: 14 }}>
+                    ✅ Resumen de la unidad
+                  </p>
                   <div className="sum-grid">
+                    {/* Identificación */}
+                    <div className="sum-section-label">Identificación</div>
                     <div className="sum-item">
                       <span className="sum-k">Nombre</span>
                       <span className="sum-v">{form.name || <em>—</em>}</span>
@@ -358,6 +536,59 @@ export default function NewUnitPage() {
                       <span className="sum-k">Dirección</span>
                       <span className="sum-v">{form.address || <em>—</em>}</span>
                     </div>
+                    <div className="sum-item">
+                      <span className="sum-k">Teléfono</span>
+                      <span className="sum-v">{form.phone || <em>—</em>}</span>
+                    </div>
+                    <div className="sum-item">
+                      <span className="sum-k">Correo</span>
+                      <span className="sum-v">{form.email || <em>—</em>}</span>
+                    </div>
+                    <div className="sum-item">
+                      <span className="sum-k">Notif. cambios</span>
+                      <span className="sum-v">
+                        <span
+                          className={`bdg ${form.notifyChanges ? "bdg-rot-on" : "bdg-rot-off"}`}
+                          style={{ fontSize: 10 }}
+                        >
+                          {form.notifyChanges ? "Sí" : "No"}
+                        </span>
+                      </span>
+                    </div>
+
+                    {/* Contrato */}
+                    <div className="sum-section-label">Contrato</div>
+                    <div className="sum-item">
+                      <span className="sum-k">Empresa</span>
+                      <span className="sum-v">
+                        {form.company ? (
+                          <span className="bdg bdg-company" style={{ fontSize: 10 }}>
+                            {form.company}
+                          </span>
+                        ) : (
+                          <em>—</em>
+                        )}
+                      </span>
+                    </div>
+                    <div className="sum-item">
+                      <span className="sum-k">Título</span>
+                      <span className="sum-v">{form.contractTitle || <em>—</em>}</span>
+                    </div>
+                    <div className="sum-item">
+                      <span className="sum-k">N° contrato</span>
+                      <span className="sum-v">{form.contractNumber || <em>—</em>}</span>
+                    </div>
+                    <div className="sum-item">
+                      <span className="sum-k">Inicio</span>
+                      <span className="sum-v">{form.startDate || <em>—</em>}</span>
+                    </div>
+                    <div className="sum-item">
+                      <span className="sum-k">Fin</span>
+                      <span className="sum-v">{form.endDate || <em>—</em>}</span>
+                    </div>
+
+                    {/* Turno */}
+                    <div className="sum-section-label">Turno</div>
                     <div className="sum-item">
                       <span className="sum-k">Tipo de turno</span>
                       <span className="sum-v">
@@ -405,6 +636,9 @@ export default function NewUnitPage() {
                         </span>
                       </span>
                     </div>
+
+                    {/* Posiciones */}
+                    <div className="sum-section-label">Posiciones</div>
                     <div className="sum-item" style={{ gridColumn: "1 / -1" }}>
                       <span className="sum-k">Posiciones</span>
                       <span className="sum-v" style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
@@ -428,11 +662,15 @@ export default function NewUnitPage() {
             {/* Footer navigation */}
             <div className="form-ftr">
               {step > 1 && (
-                <button className="btn-sec" onClick={() => setStep((s) => s - 1)} type="button">
+                <button
+                  className="btn-sec"
+                  onClick={() => setStep((s) => s - 1)}
+                  type="button"
+                >
                   ← Atrás
                 </button>
               )}
-              {step < 4 ? (
+              {step < 5 ? (
                 <button
                   className="btn-pri"
                   onClick={() => setStep((s) => s + 1)}
@@ -552,7 +790,7 @@ body{background:var(--black);font-family:'Montserrat',sans-serif;overflow-x:hidd
 }
 .step-item{
   flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;
-  padding:12px 8px;background:transparent;border:none;
+  padding:12px 6px;background:transparent;border:none;
   border-right:1px solid var(--border);cursor:pointer;
   transition:all .25s;position:relative;
 }
@@ -573,7 +811,7 @@ body{background:var(--black);font-family:'Montserrat',sans-serif;overflow-x:hidd
 }
 .step-item.active .step-num{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,.1);box-shadow:0 0 10px rgba(201,168,76,.3)}
 .step-item.done .step-num{border-color:var(--success);color:var(--success);background:rgba(129,199,132,.1)}
-.step-lbl{font-size:8px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--white-dim);transition:color .25s}
+.step-lbl{font-size:8px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--white-dim);transition:color .25s}
 .step-item.active .step-lbl{color:var(--gold)}
 .step-item.done .step-lbl{color:var(--success)}
 
@@ -609,6 +847,27 @@ body{background:var(--black);font-family:'Montserrat',sans-serif;overflow-x:hidd
 .finp::placeholder,.ftxt::placeholder{color:rgba(245,240,232,.2)}
 .fsel option{background:#1a1a1a;color:var(--white)}
 .ftxt{resize:vertical;min-height:100px;line-height:1.6}
+.finp-date{color-scheme:dark}
+
+/* Company selector */
+.company-row{display:flex;gap:10px;flex-wrap:wrap}
+.company-btn{
+  flex:1;min-width:140px;display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:16px 20px;background:rgba(255,255,255,.02);
+  border:1px solid var(--border);cursor:pointer;transition:all .25s;
+  font-family:'Montserrat',sans-serif;
+}
+.company-btn:hover{border-color:rgba(201,168,76,.4);background:rgba(201,168,76,.04)}
+.company-btn.selected{
+  border-color:var(--gold);background:rgba(201,168,76,.08);
+  box-shadow:0 0 20px rgba(201,168,76,.15);
+}
+.company-icon{font-size:24px}
+.company-name{font-size:10px;font-weight:700;letter-spacing:3px;color:var(--white-dim);transition:color .2s}
+.company-btn.selected .company-name{color:var(--gold)}
+
+/* Duration */
+.duration-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-top:4px}
 
 /* Toggle */
 .tog-row{
@@ -672,9 +931,16 @@ body{background:var(--black);font-family:'Montserrat',sans-serif;overflow-x:hidd
 /* Summary box */
 .summary-box{
   background:rgba(201,168,76,.03);border:1px solid rgba(201,168,76,.1);
-  padding:20px;
+  padding:20px;display:flex;flex-direction:column;gap:12px;
 }
-.sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sum-section-label{
+  grid-column:1 / -1;
+  font-size:8px;font-weight:700;letter-spacing:3px;text-transform:uppercase;
+  color:rgba(201,168,76,.5);padding:6px 0 4px;
+  border-bottom:1px solid rgba(201,168,76,.08);margin-top:4px;
+}
+.sum-section-label:first-child{margin-top:0}
 .sum-item{display:flex;flex-direction:column;gap:5px}
 .sum-k{font-size:8px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--gold);opacity:.7}
 .sum-v{font-size:13px;color:var(--white);font-family:'Cormorant Garamond',serif}
@@ -682,12 +948,13 @@ body{background:var(--black);font-family:'Montserrat',sans-serif;overflow-x:hidd
 
 /* Badges */
 .bdg{font-size:9px;font-weight:600;padding:3px 10px;letter-spacing:.5px;display:inline-block;border:1px solid}
-.bdg-shift{background:rgba(201,168,76,.1);color:var(--gold);border-color:rgba(201,168,76,.3)}
-.bdg-pos  {background:rgba(77,163,255,.08);color:#7BC8FF;border-color:rgba(77,163,255,.25)}
-.bdg-rest {background:rgba(180,130,255,.08);color:#C4A0FF;border-color:rgba(180,130,255,.25)}
-.bdg-cov  {background:rgba(201,168,76,.08);color:var(--gold);border-color:rgba(201,168,76,.2)}
-.bdg-rot-on{background:rgba(129,199,132,.08);color:var(--success);border-color:rgba(129,199,132,.3)}
+.bdg-shift  {background:rgba(201,168,76,.1);color:var(--gold);border-color:rgba(201,168,76,.3)}
+.bdg-pos    {background:rgba(77,163,255,.08);color:#7BC8FF;border-color:rgba(77,163,255,.25)}
+.bdg-rest   {background:rgba(180,130,255,.08);color:#C4A0FF;border-color:rgba(180,130,255,.25)}
+.bdg-cov    {background:rgba(201,168,76,.08);color:var(--gold);border-color:rgba(201,168,76,.2)}
+.bdg-rot-on {background:rgba(129,199,132,.08);color:var(--success);border-color:rgba(129,199,132,.3)}
 .bdg-rot-off{background:rgba(150,150,150,.08);color:#888;border-color:rgba(150,150,150,.2)}
+.bdg-company{background:rgba(77,163,255,.08);color:#7BC8FF;border-color:rgba(77,163,255,.3);font-weight:700;letter-spacing:2px}
 
 /* Footer */
 .form-ftr{
